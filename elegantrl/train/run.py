@@ -1,7 +1,7 @@
-from curses import noecho
 import multiprocessing as mp
 import os
 import time
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -11,20 +11,25 @@ from elegantrl.train.config import Arguments
 from elegantrl.train.config import build_env
 from elegantrl.train.evaluator import Evaluator
 from elegantrl.train.replay_buffer import ReplayBuffer, ReplayBufferList
+from utils import LogLevel, debug_msg, debug_print
 
 
 def init_agent(args: Arguments, gpu_id: int, env=None) -> AgentBase:
+    debug_msg("<run.py/init_agent> initializing agent...", level=LogLevel.INFO)
     agent = args.agent_class(args.net_dim, args.state_dim, args.action_dim, gpu_id=gpu_id, args=args)
     agent.save_or_load_agent(args.cwd, if_save=False)
 
     if env is not None:
         '''assign `agent.states` for exploration'''
         if args.env_num == 1:
-            state = env.reset()
+            state = env.reset() 
+            if isinstance(state, Tuple): # -> Tuple[obs: array, info: dict] for NEWEST VERSION of GYM!!!
+                debug_msg("New version Gym, reset() -> tuple", level=LogLevel.WARNING)
+                state = state[0]
             assert isinstance(state, np.ndarray) or isinstance(state, torch.Tensor)
             assert state.shape in {(args.state_dim,), args.state_dim}
             states = [state, ]
-        else:
+        else: # vector env ?? 
             states = env.reset()
             assert isinstance(states, torch.Tensor)
             assert states.shape == (args.env_num, args.state_dim)
@@ -50,23 +55,28 @@ def init_agent_isaacgym(args, gpu_id: int, env=None):
     return agent
 
 
-def init_buffer(args: Arguments, gpu_id: int) -> [ReplayBuffer or ReplayBufferList]:
+def init_buffer(args: Arguments, gpu_id: int) -> Union[ReplayBuffer, ReplayBufferList]:
+    debug_msg("initializing buffer...", level=LogLevel.INFO)
     if args.if_off_policy:
         buffer = ReplayBuffer(gpu_id=gpu_id,
                               max_capacity=args.max_memo,
                               state_dim=args.state_dim,
                               action_dim=1 if args.if_discrete else args.action_dim, )
+        assert isinstance(args.cwd, str)
         buffer.save_or_load_history(args.cwd, if_save=False)
 
-    else:
+    else: # on-policy
         buffer = ReplayBufferList()
     return buffer
 
 
 def init_evaluator(args: Arguments, gpu_id: int) -> Evaluator:
+    debug_msg("initializing evaluator...", level=LogLevel.INFO)
     eval_func = args.eval_env_func if getattr(args, "eval_env_func") else args.env_func
     eval_args = args.eval_env_args if getattr(args, "eval_env_args") else args.env_args
+    debug_msg("<run.py/init_evaluator> building env...")
     eval_env = build_env(args.env, eval_func, eval_args)
+    assert isinstance(args.cwd, str)
     evaluator = Evaluator(cwd=args.cwd, agent_id=gpu_id, eval_env=eval_env, args=args)
     return evaluator
 
@@ -84,14 +94,16 @@ def train_and_evaluate(args):
     '''init'''
     env = args.env
     steps = 0
-
     agent = init_agent(args, gpu_id, env)
     buffer = init_buffer(args, gpu_id)
     evaluator = init_evaluator(args, gpu_id)
 
     if env is not None:
+        debug_msg("env is not None", level=LogLevel.WARNING)
         agent.state = env.reset()
     if args.if_off_policy:
+        debug_msg("env is None", level=LogLevel.WARNING)
+        agent.state = env.reset()
         trajectory = agent.explore_env(env, args.num_seed_steps * args.num_steps_per_episode)
         buffer.update_buffer(trajectory)
 

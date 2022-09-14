@@ -1,11 +1,13 @@
-import imp
 import os
-from typing import Callable, Optional
+import os.path as osp
+from tkinter.messagebox import NO
+from typing import Any, Callable, Optional, Union, List
+from xmlrpc.client import ExpatParser
 import torch
 import numpy as np
 from copy import deepcopy
 from pprint import pprint
-from utils import Color, WarnLevel, colorize, debug
+from utils import Color, LogLevel, colorize, debug_msg, debug_print
 
 '''config for agent'''
 
@@ -16,13 +18,13 @@ class Arguments:
         self.env_func = env_func  # env = env_func(*env_args)
         self.env_args = env_args  # env = env_func(*env_args)
 
-        self.env_num = self.update_attr('env_num')  # env_num = 1. In vector env, env_num > 1.
-        self.max_step = self.update_attr('max_step')  # the max step of an episode
-        self.env_name = self.update_attr('env_name')  # the env name. Be used to set 'cwd'.
-        self.state_dim = self.update_attr('state_dim')  # vector dimension (feature number) of state
-        self.action_dim = self.update_attr('action_dim')  # vector dimension (feature number) of action
-        self.if_discrete = self.update_attr('if_discrete')  # discrete or continuous action space
-        self.target_return = self.update_attr('target_return')  # target average episode return
+        self.env_num = self.get_env_attr_from_env_or_env_args('env_num')  # env_num = 1. In vector env, env_num > 1.
+        self.max_step: int = self.get_env_attr_from_env_or_env_args('max_step')  # the max step of an episode
+        self.env_name = self.get_env_attr_from_env_or_env_args('env_name')  # the env name. Be used to set 'cwd'.
+        self.state_dim = self.get_env_attr_from_env_or_env_args('state_dim')  # vector dimension (feature number) of state
+        self.action_dim = self.get_env_attr_from_env_or_env_args('action_dim')  # vector dimension (feature number) of action
+        self.if_discrete = self.get_env_attr_from_env_or_env_args('if_discrete')  # discrete or continuous action space
+        self.target_return = self.get_env_attr_from_env_or_env_args('target_return')  # target average episode return
 
         self.agent_class = agent_class  # the class of DRL algorithm
         self.net_dim = 2 ** 8  # the network width
@@ -57,10 +59,10 @@ class Arguments:
         self.worker_num = 2  # rollout workers number pre GPU (adjust it to get high GPU usage)
         self.thread_num = 8  # cpu_num for pytorch, `torch.set_num_threads(self.num_threads)`
         self.random_seed = 0  # initialize random seed in self.init_before_training()
-        self.learner_gpus = 0  # `int` means the ID of single GPU, -1 means CPU
+        self.learner_gpus: Union[int, List[int], List[List]] = 0  # `int` means the ID of single GPU, -1 means CPU,
 
         '''Arguments for evaluate'''
-        self.cwd = None  # current working directory to save model. None means set automatically
+        self.cwd = ""  # current working directory to save model. None means set automatically
         self.if_remove = True  # remove the cwd folder? (True, False, None:ask me)
         self.break_step = +np.inf  # break training if 'total_step > break_step'
         self.if_over_write = False  # overwrite the best policy network (actor.pth)
@@ -80,8 +82,13 @@ class Arguments:
         torch.set_default_dtype(torch.float32)
 
         '''auto set'''
-        if self.cwd is None:
-            self.cwd = f'./{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}'
+        # (project_root)/elegantrl/train/config.py
+        debug_msg("<Arguments.init_before_training> setting cwd...")
+        prj_root = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))) # 3rd parent directory
+        exp_path = osp.join(prj_root, "experiments")
+        assert osp.exists(exp_path)
+        exit()
+        self.cwd =osp.join(exp_path, f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}')
 
         '''remove history'''
         if self.if_remove is None:
@@ -97,17 +104,17 @@ class Arguments:
         if self.env == None:
             self.env = build_env(self.env, self.env_func, self.env_args)
 
-    def update_attr(self, attr: str):
+    def get_env_attr_from_env_or_env_args(self, attr: str) -> Any:
         try:
             attribute_value = getattr(self.env, attr) if self.env_args is None else self.env_args[attr]
         except Exception as error:
-            print(f"| Argument.update_attr() Error: {error}")
+            print(f"| Arguments.update_attr() Error: {error}")
             attribute_value = None
         return attribute_value
 
     def if_off_policy(self) -> bool: #type: ignore
         name = self.agent_class.__name__
-        if_off_policy = all((name.find('PPO') == -1, name.find('A2C') == -1))
+        if_off_policy = all((name.find('PPO') == -1, name.find('A2C') == -1)) # 当且仅当算法(agent)名称中既没有PPO，也没有A2C时，才是off_policy，也即一旦名称中包含PPO或A2C，即为on_policy，默认算法为off_plicy
         return if_off_policy
 
     def print(self):
@@ -161,15 +168,17 @@ def get_gym_env_args(env, if_print) -> dict:  # [ElegantRL.2021.12.12]
         if max_step is None:
             max_step = 2 ** 10
 
-        if_discrete = isinstance(env.action_space, gym.spaces.Discrete)
+        if_discrete = isinstance(env.action_space, gym.spaces.discrete.Discrete) #type: ignore
         if if_discrete:  # make sure it is discrete action space
             action_dim = env.action_space.n
-        elif isinstance(env.action_space, gym.spaces.Box):  # make sure it is continuous action space
+        elif isinstance(env.action_space, gym.spaces.box.Box): #type: ignore # make sure it is continuous action space
             action_dim = env.action_space.shape[0]
             if not any(env.action_space.high - 1):
-                print('WARNING: env.action_space.high', env.action_space.high)
+                # print('WARNING: env.action_space.high', env.action_space.high)
+                debug_print('WARNING: env.action_space.high: ', args=env.action_space.high, level=LogLevel.WARNING, inline=True)
             if not any(env.action_space.low - 1):
-                print('WARNING: env.action_space.low', env.action_space.low)
+                # print('WARNING: env.action_space.low', env.action_space.low)
+                debug_print('WARNING: env.action_space.low', args=env.action_space.low, level=LogLevel.WARNING)
         else:
             raise RuntimeError('\n| Error in get_gym_env_info()'
                                '\n  Please set these value manually: if_discrete=bool, action_dim=int.'
@@ -194,7 +203,9 @@ def get_gym_env_args(env, if_print) -> dict:  # [ElegantRL.2021.12.12]
         env_args_repr = env_args_repr.replace(',', f",\n   ")
         env_args_repr = env_args_repr.replace('{', "{\n    ")
         env_args_repr = env_args_repr.replace('}', ",\n}")
-        print(f"env_args = {env_args_repr}")
+
+        debug_msg("env_args:", level=LogLevel.INFO)
+        print(f"{env_args_repr}")
     return env_args
 
 
@@ -210,27 +221,30 @@ def kwargs_filter(func, kwargs: dict):  # [ElegantRL.2021.12.12]
 
 
 def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[dict] = None):  # [ElegantRL.2021.12.12]
+    debug_msg("<config.py/builing_env> building env...")
     if env is not None:
-        # print(colorize(">>>"), colorize("env is not None, deepcopy...", Color.RED, bold=True))
-        debug("env is not None, deepcopy...", WarnLevel.WARNING)
+        debug_msg("env is not None, deepcopy...", LogLevel.WARNING)
         env = deepcopy(env)
 
-    elif env_func is not None \
-     and env_args is not None \
-     and env_func.__module__ == 'gym.envs.registration':
-               # .__module__ : 表示当前操作的对象（的类定义在）在那个模块
-        print(colorize(">>> using", bold=True), colorize("env_func()", Color.RED), colorize("initializing env..."))
-        import gym
-        gym.logger.set_level(40)  # Block warning
-        env = env_func(id=env_args['env_name'])
     else:
-        debug("using kwargs_filter...")
-        env = env_func(**kwargs_filter(env_func.__init__, env_args.copy()))
+        assert env_func is not None
+        assert env_args is not None
+        if env_func.__module__ == 'gym.envs.registration':
+                                          # ↳__module__ : 表示当前操作的对象（的类定义在）在那个模块
+            debug_print("env is None, using", args=colorize("env_func()", Color.RED)+colorize(" initializing env..."), inline=True)
+            import gym
+            gym.logger.set_level(40)  # Block warning
+            env = env_func(id=env_args['env_name'])
+        else:
+            debug_msg("using kwargs_filter...")
+            env = env_func(**kwargs_filter(env_func.__init__, env_args.copy()))
 
-    debug("setattr for env...")
+    debug_msg("setattr for env...")
+    assert env_args is not None
     for attr_str in ('state_dim', 'action_dim', 'max_step', 'if_discrete', 'target_return'):
         if (not hasattr(env, attr_str)) and (attr_str in env_args):
             setattr(env, attr_str, env_args[attr_str])
     # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
     # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
+    debug_print("env built:", args=env, level=LogLevel.SUCCESS, inline=True)
     return env
