@@ -72,7 +72,7 @@ def debug_msg(
     e.g.
     ✔  SUCCESS
     ➤  DEBUG
-    ℹ  INFO
+    ⚑ INFO
     ⚠  WARNING
     ✖  ERROR
     """

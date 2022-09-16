@@ -1,6 +1,5 @@
 import os
 import os.path as osp
-from tkinter.messagebox import NO
 from typing import Any, Callable, Optional, Union, List
 from xmlrpc.client import ExpatParser
 import torch
@@ -81,14 +80,15 @@ class Arguments:
         torch.set_num_threads(self.thread_num)
         torch.set_default_dtype(torch.float32)
 
-        '''auto set'''
+        '''auto set cwd'''
         # (project_root)/elegantrl/train/config.py
-        debug_msg("<Arguments.init_before_training> setting cwd...")
+        debug_msg("<Arguments.init_before_training> setting cwd...", level=LogLevel.INFO)
         prj_root = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))) # 3rd parent directory
         exp_path = osp.join(prj_root, "experiments")
-        assert osp.exists(exp_path)
-        exit()
+        if not osp.exists(exp_path):
+            os.mkdir(exp_path)
         self.cwd =osp.join(exp_path, f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}')
+        debug_print("cwd set in:", args=self.cwd, level=LogLevel.SUCCESS)
 
         '''remove history'''
         if self.if_remove is None:
@@ -96,12 +96,13 @@ class Arguments:
         elif self.if_remove:
             import shutil
             shutil.rmtree(self.cwd, ignore_errors=True)
-            print(f"| Arguments Remove cwd: {self.cwd}")
+            debug_print("<Arguments> Remove cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         else:
-            print(f"| Arguments Keep cwd: {self.cwd}")
+            debug_print("<Arguments> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         os.makedirs(self.cwd, exist_ok=True)
 
         if self.env == None:
+            debug_msg("<Arguments.init_before_training> args.env is None, building env...")
             self.env = build_env(self.env, self.env_func, self.env_args)
 
     def get_env_attr_from_env_or_env_args(self, attr: str) -> Any:
