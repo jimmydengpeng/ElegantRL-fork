@@ -1,11 +1,7 @@
-from asyncio import FastChildWatcher
-from distutils.log import Log
+import time
 from enum import Enum
-from gc import collect
-from operator import le
 from sre_constants import SUCCESS
 from tkinter.font import BOLD
-from tkinter.tix import Tree
 from typing import Any, Callable, Optional
 
 '''
@@ -107,6 +103,11 @@ def debug_print(
     print(args)
 
 
+def get_formatted_time():
+    return time.strftime("%Y%m%d_%H%M%S", time.localtime())
+
+
+
 if __name__ == "__main__":
     print("="*10 + " every color " + "="*10)
     for c in Color:
@@ -134,3 +135,5 @@ if __name__ == "__main__":
     print("")
     print("="*10 + " newline " + "="*10)
     debug_print("hello", args="world")
+
+    print(get_formatted_time())

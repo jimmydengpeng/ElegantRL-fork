@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from copy import deepcopy
 from pprint import pprint
-from utils import Color, LogLevel, colorize, debug_msg, debug_print
+from utils import Color, LogLevel, colorize, debug_msg, debug_print, get_formatted_time
 
 '''config for agent'''
 
@@ -62,7 +62,7 @@ class Arguments:
 
         '''Arguments for evaluate'''
         self.cwd = ""  # current working directory to save model. None means set automatically
-        self.if_remove = True  # remove the cwd folder? (True, False, None:ask me)
+        self.if_remove = False  # remove the cwd folder? (True, False, None:ask me)
         self.break_step = +np.inf  # break training if 'total_step > break_step'
         self.if_over_write = False  # overwrite the best policy network (actor.pth)
         self.if_allow_break = True  # allow break training when reach goal (early termination)
@@ -87,7 +87,7 @@ class Arguments:
         exp_path = osp.join(prj_root, "experiments")
         if not osp.exists(exp_path):
             os.mkdir(exp_path)
-        self.cwd =osp.join(exp_path, f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}')
+        self.cwd =osp.join(exp_path, f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}_{get_formatted_time()}')
         debug_print("cwd set in:", args=self.cwd, level=LogLevel.SUCCESS)
 
         '''remove history'''
