@@ -2,7 +2,7 @@ import os
 import time
 import torch
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 from elegantrl.train.config import Arguments
 # import wandb
 
@@ -29,6 +29,10 @@ class Evaluator:
               f"{'ID':<3}{'Step':>8}{'maxR':>8} |"
               f"{'avgR':>8}{'stdR':>7}{'avgS':>7}{'stdS':>6} |"
               f"{'expR':>8}{'objC':>7}{'etc.':>7}")
+        '''
+        ################################################################################
+        ID     Step    maxR |    avgR   stdR   avgS  stdS |    expR   objC   etc.
+        '''
 
     def evaluate_save_and_plot(self, act, steps: int, r_exp: float, log_tuple: tuple) -> (bool, bool):
         self.total_step += steps  # update total training steps

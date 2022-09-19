@@ -4,6 +4,7 @@ import numpy as np
 import numpy.random as rd
 import torch
 from torch import Tensor
+from utils import debug_msg, debug_print
 
 
 class ReplayBuffer_isaacgym:  # for off-policy
@@ -126,7 +127,7 @@ class ReplayBuffer:  # for off-policy
             self.sample_batch = self.sample_batch_per
 
     def update_buffer(self, traj_list: List[List]):
-        traj_items = [map(list, zip(*traj_list))]
+        traj_items = list(map(list, zip(*traj_list)))
 
         states, rewards, masks, actions = [torch.cat(item, dim=0) for item in traj_items]
         self.add_capacity = rewards.shape[0]
@@ -271,13 +272,14 @@ class ReplayBuffer:  # for off-policy
         self.prev_p = self.next_p
         return buf_state, buf_action, buf_reward, buf_mask
 
-
+"""
 class ReplayBufferList(list):  # for on-policy
     def __init__(self):
         list.__init__(self)  # (buf_state, buf_reward, buf_mask, buf_action, buf_noise) = self[:]
 
     def update_buffer(self, traj_list: List[List]) -> (int, float):
-        cur_items = [map(list, zip(*traj_list))]
+
+        cur_items = list(map(list, zip(*traj_list)))
         self[:] = [torch.cat(item, dim=0) for item in cur_items]
 
         steps = self[1].shape[0]
@@ -304,6 +306,7 @@ class ReplayBufferList(list):  # for on-policy
         print(f"| {self.__class__.__name__}: \nstate_avg = {state_avg}")
         torch.save(state_std, f"{cwd}/state_std.pt")
         print(f"| {self.__class__.__name__}: \nstate_std = {state_std}")
+"""
 
 
 class ReplayBufferList(list):  # for on-policy
@@ -311,8 +314,17 @@ class ReplayBufferList(list):  # for on-policy
         list.__init__(self)  # (buf_state, buf_reward, buf_mask, buf_action, buf_noise) = self[:]
 
     def update_buffer(self, traj_list):
-        cur_items = [map(list, zip(*traj_list))]
+        # debug_msg(f"<{__name__}.py/ReplayBufferList.update_buffer>")
+        cur_items = list(map(list, zip(*traj_list))) # list of 5 list of 1 tensor of Tensor([ s_0, ... ]), s: Tensor of Size[batch_size, state_dim (24)]
+        '''cur_items:
+        [ [tensor(states<Size[batch_size(e.g.77),   state_dim(e.g.24)]>)],
+          [tensor(rewards)], 
+          [tensor(dones)],
+          [tensor(actions)], 
+          [tensor(noises)] ]
+        '''
         self[:] = [torch.cat(item, dim=0) for item in cur_items]
+        # print(self)
 
         steps = self[1].shape[0]
         r_exp = self[1].mean().item()

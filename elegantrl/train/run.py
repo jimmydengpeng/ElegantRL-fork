@@ -1,8 +1,10 @@
 import multiprocessing as mp
+from operator import imod
 import os
 import time
 from typing import List, Tuple, Union
 
+import gym
 import numpy as np
 import torch
 
@@ -58,6 +60,7 @@ def init_agent_isaacgym(args, gpu_id: int, env=None):
 def init_buffer(args: Arguments, gpu_id: int) -> Union[ReplayBuffer, ReplayBufferList]:
     debug_msg("initializing buffer...", level=LogLevel.INFO)
     if args.if_off_policy:
+        debug_msg("  off-policy buffer...", level=LogLevel.INFO)
         buffer = ReplayBuffer(gpu_id=gpu_id,
                               max_capacity=args.max_memo,
                               state_dim=args.state_dim,
@@ -66,6 +69,7 @@ def init_buffer(args: Arguments, gpu_id: int) -> Union[ReplayBuffer, ReplayBuffe
         buffer.save_or_load_history(args.cwd, if_save=False)
 
     else: # on-policy
+        debug_msg("  on-policy buffer...", level=LogLevel.INFO)
         buffer = ReplayBufferList()
     return buffer
 
@@ -81,15 +85,16 @@ def init_evaluator(args: Arguments, gpu_id: int) -> Evaluator:
     return evaluator
 
 
-def train_and_evaluate(args):
+def train_and_evaluate(args: Arguments):
     """
     The training and evaluating loop.
 
     :param args: an object of ``Arguments`` class, which contains all hyper-parameters.
     """
     torch.set_grad_enabled(False)
-    args.init_before_training()
+    args.init_before_training() # if args.env is None, build a env & assign it to args.env
     gpu_id = args.learner_gpus
+    assert isinstance(gpu_id, int)
 
     '''init'''
     env = args.env
@@ -97,27 +102,48 @@ def train_and_evaluate(args):
     agent = init_agent(args, gpu_id, env)
     buffer = init_buffer(args, gpu_id)
     evaluator = init_evaluator(args, gpu_id)
+    assert env is not None and isinstance(env, gym.Env)
+    agent.state = env.reset() # assgin new attr `state` to agent
+    debug_msg("intialization done!", level=LogLevel.SUCCESS)
 
-    if env is not None:
-        debug_msg("env is not None", level=LogLevel.WARNING)
-        agent.state = env.reset()
     if args.if_off_policy:
-        debug_msg("env is None", level=LogLevel.WARNING)
-        agent.state = env.reset()
+        debug_msg("off-policy", level=LogLevel.INFO)
         trajectory = agent.explore_env(env, args.num_seed_steps * args.num_steps_per_episode)
         buffer.update_buffer(trajectory)
 
     '''start training'''
+    '''copy args then del args'''
     cwd = args.cwd
     break_step = args.break_step
     horizon_len = args.horizon_len
     if_allow_break = args.if_allow_break
     if_off_policy = args.if_off_policy
-    del args
+    del args #
+    ''' (delete obj) 仅删除上文定义的args，如果之前实例化的时候传入Agent和Evaluator类的参数有args，引用不会被删除 
+        (实例化agen/buffer/evaluator的时候也并没有传入args的引用，仅使用其属性的值)'''
 
+    debug_msg("start training...", LogLevel.INFO)
     if_train = True
     while if_train:
-        trajectory = agent.explore_env(env, horizon_len)
+        '''trajectory
+        [ 
+            states: tensor(Size([78, 24(state_dim)])),
+            rewards: tensor(Size([78, 1(state_dim)])),
+            dones: tensor(Size([78, 1(state_dim)])), 
+            actions: tensor(Size([78, 1(actions_dim)])), 
+            noises: tensor(Size([78, 1(noises_dim)])), 
+        ]
+        '''
+        trajectory = agent.explore_env(env, horizon_len) 
+        # for i, t in enumerate(trajectory):
+        #     debug_print(f"t{i}", args=len(t))
+        #     debug_print(f"t{i}", args=type(t))
+        #     debug_print(f"t{i}", args=t.size())
+        #     debug_print(f"t{i}", args=t)
+        #     debug_print(f"t{i}", args=type(t[0]))
+        #     debug_print(f"t{i}", args=(t[0]))
+        # print(trajectory)
+
         steps, r_exp = buffer.update_buffer((trajectory,))
         if if_off_policy:
             buffer.update_buffer(trajectory)

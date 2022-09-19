@@ -1,8 +1,12 @@
+from typing import Tuple
 import torch
 import torch.nn as nn
 from torch import Tensor
 import numpy as np
 import numpy.random as rd
+from torch.nn.parameter import Parameter
+from utils import debug_print
+
 
 """DQN"""
 
@@ -387,19 +391,21 @@ class ActorPPO(nn.Module):
             nn.Linear(128, action_dim)
         )
         # the logarithm (log) of standard deviation (std) of action, it is a trainable parameter
-        self.action_std_log = nn.Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
+        # self.action_std_log = nn.Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
+        self.action_std_log = Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
         self.log_sqrt_2pi = np.log(np.sqrt(2 * np.pi))
 
     def forward(self, state: Tensor) -> Tensor:
         return self.net(state).tanh()  # action.tanh()
 
-    def get_action(self, state: Tensor) -> (Tensor, Tensor):
+    def get_action(self, state: Tensor) -> Tuple[Tensor, Tensor]:
         action_avg = self.net(state)
         action_std = self.action_std_log.exp()
 
         noise = torch.randn_like(action_avg)
         action = action_avg + noise * action_std
-        return action, noise
+        
+        return action, noise # torch.Size([1, 4])   torch.Size([1, 4]) 
 
     def get_logprob(self, state: Tensor, action: Tensor) -> Tensor:
         action_avg = self.net(state)
@@ -409,7 +415,7 @@ class ActorPPO(nn.Module):
         logprob = -(self.action_std_log + self.log_sqrt_2pi + delta)  # new_logprob
         return logprob
 
-    def get_logprob_entropy(self, state: Tensor, action: Tensor) -> (Tensor, Tensor):
+    def get_logprob_entropy(self, state: Tensor, action: Tensor) -> Tuple[Tensor, Tensor]:
         action_avg = self.net(state)
         action_std = self.action_std_log.exp()
 

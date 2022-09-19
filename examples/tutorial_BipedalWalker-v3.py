@@ -26,7 +26,7 @@ debug_print("Agent name:", level=LogLevel.INFO, args=args.agent_class.__name__, 
 args.target_step = args.max_step * 4
 args.gamma = 0.98
 args.eval_times = 2 ** 4
-
+args.horizon_len = args.batch_size
 # debug("args:", level=LogLevel.INFO)
 # args.print()
 

@@ -9,6 +9,9 @@
 *recorder.npy
 *replay*.npz
 
+# experiments folder
+experiments/
+
 # Runs created by Isaac Gym
 runs/
 

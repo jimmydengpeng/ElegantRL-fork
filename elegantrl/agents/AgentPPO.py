@@ -1,3 +1,4 @@
+from ast import arg
 from typing import Tuple
 
 import numpy as np
@@ -9,6 +10,7 @@ from elegantrl.agents.net import ActorPPO, ActorDiscretePPO, CriticPPO, SharePPO
 from elegantrl.train.config import \
     Arguments  # bug fix:NameError: name 'Arguments' is not defined def __init__(self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None):
 from elegantrl.train.replay_buffer import ReplayBufferList
+from utils import debug_msg, debug_print
 
 """[ElegantRL.2021.12.12](github.com/AI4Fiance-Foundation/ElegantRL)"""
 
@@ -62,29 +64,32 @@ class AgentPPO(AgentBase):
         :param target_step: the total step for the interaction.
         :return: a list of trajectories [traj, ...] where `traj = [(state, other), ...]`.
         """
-        traj_list = []
+        traj_list = [] # containing tuples of (ten_s: <Tensor>, r: <float>, d: <Boolean>, a <Tensor>, n <Tensor>)
         last_done = [
             0,
         ]
-        state = self.states[0]
+        assert self.states is not None
+        '''需要第一个state去从模型得到action，再让env去step，得到下一个state...'''
+        state = self.states[0] # <numpy.ndarray> [24]
+        assert isinstance(state, np.ndarray)
 
         step_i = 0
         done = False
         get_action = self.act.get_action
-        get_a_to_e = self.act.get_a_to_e
+        get_a_to_e = self.act.get_a_to_e # action of network to action of environment
         while step_i < target_step or not done:
-            ten_s = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
+            ten_s = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0) # 在指定位置插入维度 1, 变成 torch.Size([1, 24])
             ten_a, ten_n = [
                 ten.cpu() for ten in get_action(ten_s.to(self.device))
-            ]  # different
+            ] # action: torch.Size([1, 4]),  noise: torch.Size([1, 4])
             next_s, reward, done, _ = env.step(get_a_to_e(ten_a)[0].numpy())
 
             traj_list.append((ten_s, reward, done, ten_a, ten_n))  # different
-
             step_i += 1
             state = env.reset() if done else next_s
         self.states[0] = state
         last_done[0] = step_i
+        # debug_print(f"<{__name__}.py/explore_one_env> traj_list:", args=len(traj_list), inline=True)
         return self.convert_trajectory(traj_list, last_done)  # traj_list
 
     def explore_vec_env(self, env, target_step, random_exploration=None) -> list:
@@ -155,6 +160,8 @@ class AgentPPO(AgentBase):
         """update network"""
         obj_critic = None
         obj_actor = None
+        # debug_print(f"<{__name__}.py/AgentPPO.update_net> buf_len:", args=buf_len, inline=True)
+        # debug_print(f"<{__name__}.py/AgentPPO.update_net> self.batch_size:", args=self.batch_size, inline=True)
         assert buf_len >= self.batch_size
         for _ in range(int(1 + buf_len * self.repeat_times / self.batch_size)):
             indices = torch.randint(

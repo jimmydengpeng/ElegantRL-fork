@@ -75,6 +75,7 @@ class Arguments:
         self.eval_env_args = None  # eval_env = eval_env_func(*eval_env_args)
 
     def init_before_training(self):
+        # debug_msg("<Arguments.init_before_training> setting cwd...")
         np.random.seed(self.random_seed)
         torch.manual_seed(self.random_seed)
         torch.set_num_threads(self.thread_num)
@@ -82,7 +83,6 @@ class Arguments:
 
         '''auto set cwd'''
         # (project_root)/elegantrl/train/config.py
-        debug_msg("<Arguments.init_before_training> setting cwd...", level=LogLevel.INFO)
         prj_root = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))) # 3rd parent directory
         exp_path = osp.join(prj_root, "experiments")
         if not osp.exists(exp_path):
@@ -96,9 +96,9 @@ class Arguments:
         elif self.if_remove:
             import shutil
             shutil.rmtree(self.cwd, ignore_errors=True)
-            debug_print("<Arguments> Remove cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
+            debug_print("<Arguments.init_before_training> Remove cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         else:
-            debug_print("<Arguments> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
+            debug_print("<Arguments.init_before_training> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         os.makedirs(self.cwd, exist_ok=True)
 
         if self.env == None:
@@ -224,7 +224,7 @@ def kwargs_filter(func, kwargs: dict):  # [ElegantRL.2021.12.12]
 def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[dict] = None):  # [ElegantRL.2021.12.12]
     debug_msg("<config.py/builing_env> building env...")
     if env is not None:
-        debug_msg("env is not None, deepcopy...", LogLevel.WARNING)
+        debug_msg(f"{__name__}.py/build_env> env is not None, deepcopy...")
         env = deepcopy(env)
 
     else:
@@ -232,7 +232,7 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
         assert env_args is not None
         if env_func.__module__ == 'gym.envs.registration':
                                           # ↳__module__ : 表示当前操作的对象（的类定义在）在那个模块
-            debug_print("env is None, using", args=colorize("env_func()", Color.RED)+colorize(" initializing env..."), inline=True)
+            debug_print("<config.py/build_env> env is None, using", args=colorize("env_func()", Color.RED)+colorize(" initializing env...", color=LogLevel.DEBUG.value, bold=False), inline=True)
             import gym
             gym.logger.set_level(40)  # Block warning
             env = env_func(id=env_args['env_name'])
@@ -240,12 +240,12 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
             debug_msg("using kwargs_filter...")
             env = env_func(**kwargs_filter(env_func.__init__, env_args.copy()))
 
-    debug_msg("setattr for env...")
+    debug_msg("<config.py/build_env> setattr for env...")
     assert env_args is not None
     for attr_str in ('state_dim', 'action_dim', 'max_step', 'if_discrete', 'target_return'):
         if (not hasattr(env, attr_str)) and (attr_str in env_args):
             setattr(env, attr_str, env_args[attr_str])
     # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
     # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
-    debug_print("env built:", args=env, level=LogLevel.SUCCESS, inline=True)
+    debug_print(f"<{__name__}.py/build_env> env built:", args=env, level=LogLevel.SUCCESS, inline=True)
     return env
