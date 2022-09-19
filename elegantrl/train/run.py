@@ -172,8 +172,6 @@ def train_and_evaluate(args: Arguments):
 
 
 '''train multiple process'''
-
-
 def train_and_evaluate_mp(args: Arguments):
     args.init_before_training()
 
@@ -265,11 +263,11 @@ class PipeLearner:
         agent.save_or_load_agent(cwd, if_save=True)
         print(f'| Learner: Save in {cwd}')
 
-        env = build_env(env_func=args.env_func, env_args=args.env_args)
+        # env = build_env(env_func=args.env_func, env_args=args.env_args)
         buffer.get_state_norm(
             cwd=cwd,
-            state_avg=getattr(env, 'state_avg', 0.0),
-            state_std=getattr(env, 'state_std', 1.0),
+            # state_avg=getattr(env, 'state_avg', 0.0),
+            # state_std=getattr(env, 'state_std', 1.0),
         )
         if hasattr(buffer, 'save_or_load_history'):
             print(f"| LearnerPipe.run: ReplayBuffer saving in {cwd}")

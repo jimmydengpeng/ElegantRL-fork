@@ -1,8 +1,14 @@
 import gym
+import argparse
 from elegantrl.agents import AgentPPO
 from elegantrl.train.config import get_gym_env_args, Arguments
 from elegantrl.train.run import *
 from utils import debug_msg, debug_print
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--gpuid', '-g', type=int, default=0)
+ter_args = parser.parse_args()
+# debug_print("ter_args.gpuid: ", ter_args.gpuid)
 
 gym.logger.set_level(40)  # Block warning
 
@@ -19,29 +25,31 @@ env_args = {
     "target_return": 300,
     "id": "BipedalWalker-v3",
 }
-args = Arguments(AgentPPO, env_func=env_func, env_args=env_args)
 
-debug_print("Agent name:", level=LogLevel.INFO, args=args.agent_class.__name__, inline=True)
+args = Arguments(AgentPPO, env_func=env_func, env_args=env_args)
 
 args.target_step = args.max_step * 4
 args.gamma = 0.98
 args.eval_times = 2 ** 4
 args.horizon_len = args.batch_size
-# debug("args:", level=LogLevel.INFO)
-# args.print()
+args.learner_gpus = ter_args.gpuid
 
+# args.print()
+debug_print("Agent name:", level=LogLevel.INFO, args=args.agent_class.__name__, inline=True)
+debug_print("Env   name:", args=args.env_name, level=LogLevel.INFO, inline=True)
 
 if __name__ == '__main__':
-    flag = "SingleProcess"
-    # flag = "MultiProcess"
+    # flag = "SingleProcess"
+    flag = "MultiProcess"
+
     if flag == "SingleProcess":
         debug_msg(">>> Single Process <<<", level=LogLevel.INFO)
-        args.learner_gpus = 0
         train_and_evaluate(args)
+
     elif flag == "MultiProcess":
-        debug_msg(">>> Multi-Process...", level=LogLevel.INFO)
-        args.learner_gpus = 0
+        debug_msg(">>> Multi-Process <<<", level=LogLevel.INFO)
         train_and_evaluate_mp(args)
+
     elif flag == "MultiGPU":
         args.learner_gpus = [0, 1, 2, 3]
         train_and_evaluate_mp(args)

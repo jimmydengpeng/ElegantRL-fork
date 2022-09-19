@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Tuple
 import torch
 import numpy as np
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -34,7 +35,7 @@ class Evaluator:
         ID     Step    maxR |    avgR   stdR   avgS  stdS |    expR   objC   etc.
         '''
 
-    def evaluate_save_and_plot(self, act, steps: int, r_exp: float, log_tuple: tuple) -> (bool, bool):
+    def evaluate_save_and_plot(self, act, steps: int, r_exp: float, log_tuple: tuple) -> Tuple[bool, bool]:
         self.total_step += steps  # update total training steps
 
         if time.time() - self.eval_time < self.eval_gap:

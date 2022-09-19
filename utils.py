@@ -48,8 +48,8 @@ class LogLevel(Enum):
 
 LogSymbol = {
     LogLevel.SUCCESS: "✔", # Enum key is type str
-    LogLevel.DEBUG: "➤",
-    LogLevel.INFO: "⚑",
+    LogLevel.DEBUG: "",
+    LogLevel.INFO: "",
     LogLevel.WARNING: "⚠",
     LogLevel.ERROR: "✖"
 }
@@ -67,11 +67,12 @@ def debug_msg(
     symbol msg (same color)
     e.g.
     ✔  SUCCESS
-    ➤  DEBUG
-    ⚑ INFO
+      DEBUG
+      INFO
     ⚠  WARNING
     ✖  ERROR
     """
+    ''' ➤  ☞ ⚑ '''
     def colored_prompt(prompt: str) -> str:
         symbol = LogSymbol[level]
         text = symbol + ' [' + prompt + ']'
@@ -95,8 +96,8 @@ def debug_msg(
 
 def debug_print(
         msg: str,
-        level: LogLevel = LogLevel.DEBUG,
         args=Any,
+        level: LogLevel = LogLevel.DEBUG,
         inline=False
     ):
     debug_msg(msg, level, inline=inline)
