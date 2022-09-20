@@ -150,6 +150,7 @@ def get_gym_env_args(env, if_print) -> dict:  # [ElegantRL.2021.12.12]
 
     if {'unwrapped', 'observation_space', 'action_space', 'spec'}.issubset(dir(env)):  # isinstance(env, gym.Env):
         env_name = getattr(env, 'env_name', None)
+        print(env_name)
         env_name = env.unwrapped.spec.id if env_name is None else env_name
 
         state_shape = env.observation_space.shape
@@ -240,12 +241,15 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
             debug_msg("using kwargs_filter...")
             env = env_func(**kwargs_filter(env_func.__init__, env_args.copy()))
 
-    debug_msg("<config.py/build_env> setattr for env...")
+    set_attr_for_env(env, env_args)
+    debug_print(f"<{__name__}.py/set_attr_for_envbuild_env> env built:", args=env, level=LogLevel.SUCCESS, inline=True)
+    return env
+
+def set_attr_for_env(env, env_args):
+    debug_msg(f"<{__name__}.py/set_attr_for_env> setattr for env...")
     assert env_args is not None
     for attr_str in ('state_dim', 'action_dim', 'max_step', 'if_discrete', 'target_return'):
         if (not hasattr(env, attr_str)) and (attr_str in env_args):
             setattr(env, attr_str, env_args[attr_str])
     # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
     # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
-    debug_print(f"<{__name__}.py/build_env> env built:", args=env, level=LogLevel.SUCCESS, inline=True)
-    return env
