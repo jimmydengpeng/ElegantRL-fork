@@ -1,7 +1,6 @@
 import time
+import gym
 from enum import Enum
-from sre_constants import SUCCESS
-from tkinter.font import BOLD
 from typing import Any, Callable, Optional
 
 '''
@@ -108,6 +107,18 @@ def get_formatted_time():
     return time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
 
+def get_space_dim(space):
+    if isinstance(space, gym.spaces.Box):
+        return space.shape[0]
+    elif isinstance(space, gym.spaces.Discrete):
+        return space.n
+
+    
+def test_get_space_dim():
+    env = gym.make("CartPole-v1")
+    debug_print("action space:", args=get_space_dim(env.action_space))
+    debug_print("obs space:", args=get_space_dim(env.observation_space))
+
 
 if __name__ == "__main__":
     print("="*10 + " every color " + "="*10)
@@ -138,3 +149,6 @@ if __name__ == "__main__":
     debug_print("hello", args="world")
 
     print(get_formatted_time())
+
+
+    test_get_space_dim()

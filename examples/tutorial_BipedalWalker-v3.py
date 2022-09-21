@@ -1,4 +1,4 @@
-from ast import arg
+import time
 import gym
 import argparse
 from elegantrl.agents import AgentPPO
@@ -7,8 +7,9 @@ from elegantrl.train.run import *
 from utils import debug_msg, debug_print
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--gpuid', '-g', type=int, default=0)
-parser.add_argument('--worker', type=int, default=2)
+parser.add_argument('--gpuid', '-g', type=int, default=1)
+parser.add_argument('--worker', type=int, default=16)
+parser.add_argument('--thread', type=int, default=16)
 ter_args = parser.parse_args()
 # debug_print("ter_args.gpuid: ", ter_args.gpuid)
 
@@ -51,7 +52,12 @@ if __name__ == '__main__':
 
     elif flag == "MultiProcess":
         debug_msg(">>> Multi-Process <<<", level=LogLevel.INFO)
-        train_and_evaluate_mp(args)
+        for i in range(1, 11):
+            debug_msg(f"=== train_and_evaluate_mp: {i} of 10 ===")
+            start = time.time()
+            train_and_evaluate_mp(args)
+            end = time.time()
+            debug_print(f"=== train_and_evaluate_mp: {i} of 10 ===", args=(end-start))
 
     elif flag == "MultiGPU":
         args.learner_gpus = [0, 1, 2, 3]
