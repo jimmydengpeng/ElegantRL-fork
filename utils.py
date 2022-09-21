@@ -1,7 +1,8 @@
 import time
 import gym
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+from elegantrl.train.config import get_gym_env_args
 
 '''
 color2num = dict(
@@ -118,6 +119,7 @@ def test_get_space_dim():
     env = gym.make("CartPole-v1")
     debug_print("action space:", args=get_space_dim(env.action_space))
     debug_print("obs space:", args=get_space_dim(env.observation_space))
+    print(get_gym_env_args(env, if_print=True))
 
 
 if __name__ == "__main__":

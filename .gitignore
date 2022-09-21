@@ -1,6 +1,9 @@
 # Python-created cache files
 **/__pycache__
 
+# ipynotebook checkpoints
+.ipynb_checkpoints
+
 # Saved actor/critic networks from training
 *.pth
 
