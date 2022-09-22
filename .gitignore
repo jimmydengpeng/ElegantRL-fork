@@ -23,8 +23,12 @@ runs/
 # JetBrains folder
 .idea/
 
+#others
 **/build/
 .pytest_cache/
 docs/
 elegantrl/envs/
 **/.DS_Store
+
+# tests file
+test.py

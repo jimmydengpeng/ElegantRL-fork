@@ -1,3 +1,4 @@
+from cgi import test
 import os
 import os.path as osp
 from typing import Any, Callable, Optional, Union, List
@@ -253,12 +254,3 @@ def set_attr_for_env(env, env_args):
             setattr(env, attr_str, env_args[attr_str])
     # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
     # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
-
-
-if __name__ == "__main__":
-    pass
-
-def test_get_gym_env_args():
-    import gym
-    env = gym.make("CartPole-v1")
-    print(get_gym_env_args(env, if_print=True))

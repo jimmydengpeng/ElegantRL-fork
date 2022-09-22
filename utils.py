@@ -1,8 +1,5 @@
-import time
-import gym
 from enum import Enum
 from typing import Any, Optional
-from elegantrl.train.config import get_gym_env_args
 
 '''
 color2num = dict(
@@ -19,6 +16,7 @@ color2num = dict(
 '''
 
 class Color(Enum):
+    # names    = values
     GRAY       = 30
     RED        = 31
     GREEN      = 32
@@ -40,20 +38,22 @@ def colorize(string: str, color=Color.WHITE, bold=True, highlight=False) -> str:
     return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
 
 class LogLevel(Enum):
+    # enumerated constants 
     SUCCESS = Color.GREEN
     DEBUG = Color.MAGENTA
     INFO = Color.BLUE
     WARNING = Color.YELLOW
     ERROR = Color.RED
 
-LogSymbol = {
-    LogLevel.SUCCESS: "✔", # Enum key is type str
-    LogLevel.DEBUG: "",
-    LogLevel.INFO: "",
-    LogLevel.WARNING: "⚠",
-    LogLevel.ERROR: "✖"
-}
-
+LogSymbol = dict({
+    # Enum members are hashable & can be used as dictionary keys
+    LogLevel.SUCCESS:  "✔", 
+    LogLevel.DEBUG:    "",
+    LogLevel.INFO:     "",
+    LogLevel.WARNING:  "⚠",
+    LogLevel.ERROR:    "✖"
+})
+'''alternatives: ➤  ☞ ⚑ '''
 
 def debug_msg(
         msg: str,
@@ -63,16 +63,13 @@ def debug_msg(
         inline=False
     ):
     """
-    return:
-    symbol msg (same color)
-    e.g.
-    ✔  SUCCESS
-      DEBUG
-      INFO
-    ⚠  WARNING
-    ✖  ERROR
+    return: symbol msg (same color), e.g.
+    ✔ [SUCCESS] SUCCESS
+     [DEBUG] DEBUG
+     [INFO] INFO
+    ⚠ [WARNING] WARNING
+    ✖ [ERROR] ERROR
     """
-    ''' ➤  ☞ ⚑ '''
     def colored_prompt(prompt: str) -> str:
         symbol = LogSymbol[level]
         text = symbol + ' [' + prompt + ']'
@@ -93,7 +90,6 @@ def debug_msg(
     else:
         print(colorize(">>>", bold=True), colorize(msg, color=color, bold=bold), end=end)
 
-
 def debug_print(
         msg: str,
         args=Any,
@@ -105,10 +101,17 @@ def debug_print(
 
 
 def get_formatted_time():
+    """
+    return: e.g. 20220921_200435
+    """
+    import time
     return time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
 
 def get_space_dim(space):
+    import gym
+    assert hasattr(gym, "spaces")
+    assert hasattr(gym, "Box")
     if isinstance(space, gym.spaces.Box):
         return space.shape[0]
     elif isinstance(space, gym.spaces.Discrete):
@@ -116,24 +119,25 @@ def get_space_dim(space):
 
     
 def test_get_space_dim():
+    import gym
+    from elegantrl.train.config import get_gym_env_args
+
     env = gym.make("CartPole-v1")
     debug_print("action space:", args=get_space_dim(env.action_space))
     debug_print("obs space:", args=get_space_dim(env.observation_space))
     print(get_gym_env_args(env, if_print=True))
 
-
-if __name__ == "__main__":
+def test_debug_log_functions():
     print("="*10 + " every color " + "="*10)
     for c in Color:
         print(colorize(f"{c}", color=c, bold=False))
-        print(colorize(f"{c}", color=c))
+        print(colorize(f"{c}.BOLD", color=c))
 
     print("")
-    print("="*10 + " every level " + "="*10)
+    print("="*10 + " every log level " + "="*10)
     for l in LogLevel:
         level_name = str(l)[len(LogLevel.__name__)+1:]
         debug_msg(level_name, level=l)
-
 
     print("")
     print("="*10 + " other color " + "="*10)
@@ -149,6 +153,11 @@ if __name__ == "__main__":
     print("")
     print("="*10 + " newline " + "="*10)
     debug_print("hello", args="world")
+    print("")
+
+
+if __name__ == "__main__":
+    test_debug_log_functions()
 
     print(get_formatted_time())
 
