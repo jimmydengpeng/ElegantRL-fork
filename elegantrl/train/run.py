@@ -19,13 +19,14 @@ from utils import LogLevel, debug_msg, debug_print
 def init_agent(args: Arguments, gpu_id: int, env=None) -> AgentBase:
     debug_msg("<run.py/init_agent> initializing agent...", level=LogLevel.INFO)
     agent = args.agent_class(args.net_dim, args.state_dim, args.action_dim, gpu_id=gpu_id, args=args)
+    # if args.cwd_exists_pth():
     agent.save_or_load_agent(args.cwd, if_save=False)
 
     if env is not None:
         '''assign `agent.states` for exploration'''
         if args.env_num == 1:
             state = env.reset() 
-            if isinstance(state, Tuple): # -> Tuple[obs: array, info: dict] for NEWEST VERSION of GYM!!!
+            if isinstance(state, Tuple): # ~~> Tuple[obs: array, info: dict] for NEWEST VERSION of GYM!!!
                 debug_msg("New version Gym, reset() -> tuple", level=LogLevel.WARNING)
                 state = state[0]
             assert isinstance(state, np.ndarray) or isinstance(state, torch.Tensor)
@@ -59,7 +60,7 @@ def init_agent_isaacgym(args, gpu_id: int, env=None):
 
 def init_buffer(args: Arguments, gpu_id: int) -> Union[ReplayBuffer, ReplayBufferList]:
     debug_msg("initializing buffer...", level=LogLevel.INFO)
-    if args.if_off_policy:
+    if args._if_off_policy:
         debug_msg("  off-policy buffer...", level=LogLevel.INFO)
         buffer = ReplayBuffer(gpu_id=gpu_id,
                               max_capacity=args.max_memo,
@@ -78,7 +79,7 @@ def init_evaluator(args: Arguments, gpu_id: int) -> Evaluator:
     debug_msg("initializing evaluator...", level=LogLevel.INFO)
     eval_func = args.eval_env_func if getattr(args, "eval_env_func") else args.env_func
     eval_args = args.eval_env_args if getattr(args, "eval_env_args") else args.env_args
-    debug_msg("<run.py/init_evaluator> building env...")
+    debug_msg(f"<{__name__}.py/init_evaluator> calling building_env...")
     eval_env = build_env(args.env, eval_func, eval_args)
     assert isinstance(args.cwd, str)
     evaluator = Evaluator(cwd=args.cwd, agent_id=gpu_id, eval_env=eval_env, args=args)
@@ -99,12 +100,13 @@ def train_and_evaluate(args: Arguments):
     '''init'''
     env = args.env
     steps = 0
+
     agent = init_agent(args, gpu_id, env)
     buffer = init_buffer(args, gpu_id)
     evaluator = init_evaluator(args, gpu_id)
     assert env is not None and isinstance(env, gym.Env)
-    agent.state = env.reset() # assgin new attr `state` to agent
-    debug_msg("intialization done!", level=LogLevel.SUCCESS)
+    # agent.states= env.reset() #type:ignore # assgin new attr `state` to agent
+    # debug_msg("intialization done!", level=LogLevel.SUCCESS)
 
     if args.if_off_policy:
         debug_msg("off-policy", level=LogLevel.INFO)
@@ -118,45 +120,45 @@ def train_and_evaluate(args: Arguments):
     horizon_len = args.horizon_len
     if_allow_break = args.if_allow_break
     if_off_policy = args.if_off_policy
-    del args #
+    del args
     ''' (delete obj) 仅删除上文定义的args，如果之前实例化的时候传入Agent和Evaluator类的参数有args，引用不会被删除 
         (实例化agen/buffer/evaluator的时候也并没有传入args的引用，仅使用其属性的值)'''
 
-    debug_msg("start training...", LogLevel.INFO)
+    # debug_msg("start training...", LogLevel.INFO)
     if_train = True
     while if_train:
-        '''trajectory
+        '''trajectory:
         [ 
             states: tensor(Size([78, 24(state_dim)])),
-            rewards: tensor(Size([78, 1(state_dim)])),
-            dones: tensor(Size([78, 1(state_dim)])), 
-            actions: tensor(Size([78, 1(actions_dim)])), 
-            noises: tensor(Size([78, 1(noises_dim)])), 
+            rewards: tensor(Size([78, 1])),
+            dones: tensor(Size([78, 1])), 
+            actions: tensor(Size([78, 4(actions_dim)])), 
+            noises: tensor(Size([78, 5(noises_dim)])), 
         ]
         '''
         trajectory = agent.explore_env(env, horizon_len) 
+        # debug_msg(f"<{__name__}.py/.train_and_evaluate> trajectory:")
         # for i, t in enumerate(trajectory):
-        #     debug_print(f"t{i}", args=len(t))
-        #     debug_print(f"t{i}", args=type(t))
-        #     debug_print(f"t{i}", args=t.size())
+        #     debug_print(f"t{i} type:", args=type(t), inline=True)
+        #     debug_print(f"t{i} size:", args=t.size(), inline=True)
+        #     debug_print(f"t{i} dim:", args=t.dim(), inline=True)
         #     debug_print(f"t{i}", args=t)
-        #     debug_print(f"t{i}", args=type(t[0]))
-        #     debug_print(f"t{i}", args=(t[0]))
-        # print(trajectory)
-
-        steps, r_exp = buffer.update_buffer((trajectory,))
+        #     debug_print(f"t{i}[0] type", args=type(t[0]), inline=True)
+        #     debug_print(f"t{i}[0] size", args=t[0].size(), inline=True)
+        #     debug_print(f"t{i}[0]", args=(t[0]))
+        steps += horizon_len
+        # steps, r_exp = buffer.update_buffer((trajectory,))
         if if_off_policy:
             buffer.update_buffer(trajectory)
             torch.set_grad_enabled(True)
             logging_tuple = agent.update_net(buffer)
             torch.set_grad_enabled(False)
         else:
+            r_exp = trajectory[3].mean().item()
             torch.set_grad_enabled(True)
             logging_tuple = agent.update_net(trajectory)
             torch.set_grad_enabled(False)
 
-        #r_exp = agent.reward_tracker.mean()
-        #step_exp = agent.step_tracker.mean()
         (if_reach_goal, if_save) = evaluator.evaluate_save_and_plot(agent.act, steps, r_exp, logging_tuple)
         dont_break = not if_allow_break
         not_reached_goal = not if_reach_goal
@@ -220,7 +222,7 @@ class PipeWorker:
 
         '''loop'''
         target_step = args.target_step
-        if args.if_off_policy:
+        if args._if_off_policy:
             trajectory = agent.explore_env(env, args.target_step)
             self.pipes[worker_id][0].send(trajectory)
         del args

@@ -1,8 +1,8 @@
-from cgi import test
+from operator import imod
 import os
 import os.path as osp
 from typing import Any, Callable, Optional, Union, List
-from xmlrpc.client import ExpatParser
+import gym
 import torch
 import numpy as np
 from copy import deepcopy
@@ -13,14 +13,20 @@ from utils import Color, LogLevel, colorize, debug_msg, debug_print, get_formatt
 
 
 class Arguments:
-    def __init__(self, agent_class: Callable, env=None, env_func=None, env_args: Optional[dict] = None):
+    def __init__(
+        self, 
+        agent_class: Callable, 
+        env: Optional[gym.Env] = None, 
+        env_func: Optional[Callable]=None, 
+        env_args: Optional[dict] = None
+    ):
         self.env = env  # the environment for training
         self.env_func = env_func  # env = env_func(*env_args)
         self.env_args = env_args  # env = env_func(*env_args)
 
         self.env_num = self.get_env_attr_from_env_or_env_args('env_num')  # env_num = 1. In vector env, env_num > 1.
-        self.max_step: int = self.get_env_attr_from_env_or_env_args('max_step')  # the max step of an episode
         self.env_name = self.get_env_attr_from_env_or_env_args('env_name')  # the env name. Be used to set 'cwd'.
+        self.max_step: int = self.get_env_attr_from_env_or_env_args('max_step')  # the max step of an episode
         self.state_dim = self.get_env_attr_from_env_or_env_args('state_dim')  # vector dimension (feature number) of state
         self.action_dim = self.get_env_attr_from_env_or_env_args('action_dim')  # vector dimension (feature number) of action
         self.if_discrete = self.get_env_attr_from_env_or_env_args('if_discrete')  # discrete or continuous action space
@@ -75,6 +81,7 @@ class Arguments:
         self.eval_env_func = None  # eval_env = eval_env_func(*eval_env_args)
         self.eval_env_args = None  # eval_env = eval_env_func(*eval_env_args)
 
+    # if args.env is None, build a env & assign it to args.env
     def init_before_training(self):
         # debug_msg("<Arguments.init_before_training> setting cwd...")
         np.random.seed(self.random_seed)
@@ -102,6 +109,7 @@ class Arguments:
             debug_print("<Arguments.init_before_training> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         os.makedirs(self.cwd, exist_ok=True)
 
+        '''build env if needed'''
         if self.env == None:
             debug_msg("<Arguments.init_before_training> args.env is None, building env...")
             self.env = build_env(self.env, self.env_func, self.env_args)
@@ -233,7 +241,7 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
         assert env_func is not None
         assert env_args is not None
         if env_func.__module__ == 'gym.envs.registration':
-                                          # ↳__module__ : 表示当前操作的对象（的类定义在）在那个模块
+                 # ↳__module__ : 表示当前操作的对象（的类定义在）在那个模块
             debug_print("<config.py/build_env> env is None, using", args=colorize("env_func()", Color.RED)+colorize(" initializing env...", color=LogLevel.DEBUG.value, bold=False), inline=True)
             import gym
             gym.logger.set_level(40)  # Block warning

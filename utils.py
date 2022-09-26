@@ -109,15 +109,13 @@ def get_formatted_time():
 
 
 def get_space_dim(space):
-    import gym
-    assert hasattr(gym, "spaces")
-    assert hasattr(gym, "Box")
+    import gym.spaces
     if isinstance(space, gym.spaces.Box):
-        return space.shape[0]
+        return space.shape[0]  # type: ignore
     elif isinstance(space, gym.spaces.Discrete):
-        return space.n
+        return space.n  # type: ignore
 
-    
+ 
 def test_get_space_dim():
     import gym
     from elegantrl.train.config import get_gym_env_args
@@ -157,9 +155,8 @@ def test_debug_log_functions():
 
 
 if __name__ == "__main__":
-    test_debug_log_functions()
+    # test_debug_log_functions()
 
-    print(get_formatted_time())
 
 
     test_get_space_dim()
