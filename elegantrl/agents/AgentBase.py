@@ -1,6 +1,6 @@
 import os
 from collections import deque
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -10,9 +10,11 @@ from torch.nn.utils import clip_grad_norm_
 from elegantrl.train.config import Arguments
 from elegantrl.train.replay_buffer import ReplayBuffer
 
+from utils import LogLevel, debug_print
+
 
 class AgentBase:
-    def __init__(self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None):
+    def __init__(self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args = None):
         """initialize
         replace by different DRL algorithms
 
@@ -35,11 +37,13 @@ class AgentBase:
         self.clip_grad_norm = getattr(args, 'clip_grad_norm', 3.0)
         self.soft_update_tau = getattr(args, 'soft_update_tau', 2 ** -8)
 
-        self.if_use_per = getattr(args, 'if_use_per', None)
-        self.if_off_policy = getattr(args, 'if_off_policy', None)
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.if_use_per = getattr(args, 'if_use_per', False)
+        self.if_off_policy = getattr(args, 'if_off_policy', False)
         self.if_use_old_traj = getattr(args, 'if_use_old_traj', False)
 
-        self.states = None  # assert self.states == (env_num, state_dim)
+        self.states: List[np.ndarray] = []
         self.device = torch.device(f"cuda:{gpu_id}" if (torch.cuda.is_available() and (gpu_id >= 0)) else "cpu")
         self.traj_list = [[torch.tensor((), dtype=torch.float32, device=self.device)
                            for _ in range(4 if self.if_off_policy else 5)]
@@ -97,12 +101,12 @@ class AgentBase:
         self.ten_mask = None
         self.ten_v_sum = None
 
-    def explore_one_env(self, env, target_step: int) -> list:
+    def explore_one_env(self, env, horizon_len: int) -> list:
         """
         Collect trajectories through the actor-environment interaction for a **single** environment instance.
 
         :param env: RL training environment. env.reset() env.step(). It should be a vector env.
-        :param target_step: explored target_step number of step in env
+        :param horizon_len: explored horizon_len number of step in env
         :return: `[traj, ]`
         `traj = [(state, reward, mask, action, noise), ...]` for on-policy
         `traj = [(state, reward, mask, action), ...]` for off-policy
@@ -113,7 +117,7 @@ class AgentBase:
 
         i = 0
         done = False
-        while i < target_step or not done:
+        while i < horizon_len or not done:
             tensor_state = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
             tensor_action = self.act.get_action(tensor_state.to(self.device)).detach().cpu()  # different
             next_state, reward, done, _ = env.step(tensor_action[0].numpy())  # different
@@ -127,7 +131,7 @@ class AgentBase:
         last_dones[0] = i
         return self.convert_trajectory(traj_list, last_dones)  # traj_list
 
-    def explore_vec_env(self, env, target_step: int) -> list:
+    def explore_vec_env(self, env, target_step: int) -> list: # FIXME args target_step
         """
         Collect trajectories through the actor-environment interaction for a **vectorized** environment instance.
 
@@ -156,8 +160,8 @@ class AgentBase:
         self.states = states
         return self.convert_trajectory(traj_list, last_dones)  # traj_list
 
-    def update_net(self, buffer: ReplayBuffer) -> tuple:
-        return 0.0, 0.0
+    # def update_net(self, buffer: ReplayBuffer) -> tuple:
+    #     return 0.0, 0.0
 
     def get_obj_critic_raw(self, buffer: ReplayBuffer, batch_size: int) -> (Tensor, Tensor):
         """
@@ -368,7 +372,12 @@ class AgentBase:
         else:
             for name, obj in name_obj_list:
                 save_path = f"{cwd}/{name}.pth"
-                load_torch_file(obj, save_path) if os.path.isfile(save_path) else None
+                path_exists = os.path.isfile(save_path)
+                if path_exists:
+                    load_torch_file(obj, save_path)  
+                    debug_print("Loading file:", save_path, level=LogLevel.SUCCESS, inline=True)
+                # else:
+                #     debug_print("File doesn't exist:", save_path, level=LogLevel.WARNING, inline=True)
 
     def get_buf_h_term_k(
             self, buf_state: Tensor, buf_action: Tensor, buf_mask: Tensor, buf_reward: Tensor

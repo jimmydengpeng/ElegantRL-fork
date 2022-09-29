@@ -50,7 +50,7 @@ def init_agent_isaacgym(args, gpu_id: int, env=None):
 
 
 def init_buffer(args: Arguments, gpu_id: int) -> [ReplayBuffer or ReplayBufferList]:
-    if args.if_off_policy:
+    if args._if_off_policy:
         buffer = ReplayBuffer(gpu_id=gpu_id,
                               max_capacity=args.max_memo,
                               state_dim=args.state_dim,
@@ -182,7 +182,7 @@ class PipeWorker:
 
         '''loop'''
         target_step = args.target_step
-        if args.if_off_policy:
+        if args._if_off_policy:
             trajectory = agent.explore_env(env, args.target_step)
             self.pipes[worker_id][0].send(trajectory)
         del args

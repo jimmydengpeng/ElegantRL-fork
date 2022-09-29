@@ -1,3 +1,4 @@
+from cgi import print_arguments
 from operator import imod
 import os
 import os.path as osp
@@ -33,10 +34,10 @@ class Arguments:
         self.target_return = self.get_env_attr_from_env_or_env_args('target_return')  # target average episode return
 
         self.agent_class = agent_class  # the class of DRL algorithm
-        self.net_dim = 2 ** 8  # the network width
-        self.num_layer = 3  # layer number of MLP (Multi-layer perception, `assert layer_num>=2`)
-        self.horizon_len = 1  # number of steps per exploration
-        self.if_off_policy: bool = self.if_off_policy() #type: ignore # agent is on-policy or off-policy
+        self.net_dim = 2 ** 8  # (256) the network width #FIXME not use
+        self.num_layer = 2  # 3 layer number of MLP (Multi-layer perception, `assert layer_num>=2`)#FIXME not use
+        self.horizon_len = 32  # number of steps per exploration #FIXME args.horizon_len = args.batch_size
+        self.if_off_policy: bool = self._if_off_policy() #type: ignore # agent is on-policy or off-policy
         if self.if_off_policy:  # off-policy
             self.max_memo = 2 ** 21  # capacity of replay buffer, 2 ** 21 ~= 2e6
             self.batch_size = self.net_dim  # num of transitions sampled from replay buffer.
@@ -47,7 +48,7 @@ class Arguments:
             self.n_step = 1  # multi-step TD learning
         else:  # on-policy
             self.max_memo = 2 ** 12  # capacity of replay buffer
-            self.target_step = self.max_memo  # repeatedly update network to keep critic's loss small
+            self.target_step = self.max_memo  #FIXME repeatedly update network to keep critic's loss small #FIXME to be del
             self.batch_size = self.net_dim * 2  # num of transitions sampled from replay buffer.
             self.repeat_times = 2 ** 4  # collect target_step, then update network
             self.if_use_gae = False  # use PER: GAE (Generalized Advantage Estimation) for sparse reward
@@ -57,6 +58,7 @@ class Arguments:
         self.reward_scale = 2 ** 0  # an approximate target reward usually be closed to 256
         self.lambda_critic = 2 ** 0  # the objective coefficient of critic network
         self.learning_rate = 2 ** -15  # 2 ** -15 ~= 3e-5
+        # self.learning_rate = 3e-4
         self.soft_update_tau = 2 ** -8  # 2 ** -8 ~= 5e-3
         self.clip_grad_norm = 3.0  # 0.1 ~ 4.0, clip the gradient after normalization
         self.if_use_old_traj = False  # save old data to splice and get a complete trajectory (for vector env)
@@ -65,7 +67,8 @@ class Arguments:
         self.worker_num = 2  # rollout workers number pre GPU (adjust it to get high GPU usage)
         self.thread_num = 8  # cpu_num for pytorch, `torch.set_num_threads(self.num_threads)`
         self.random_seed = 0  # initialize random seed in self.init_before_training()
-        self.learner_gpus: Union[int, List[int], List[List]] = 0  # `int` means the ID of single GPU, -1 means CPU,
+        # self.learner_gpus: Union[int, List[int], List[List]] = 0  # `int` means the ID of single GPU, -1 means CPU,
+        self.learner_gpus: int = 0  # `int` means the ID of single GPU, -1 means CPU,
 
         '''Arguments for evaluate'''
         self.cwd = ""  # current working directory to save model. None means set automatically
@@ -76,10 +79,13 @@ class Arguments:
 
         '''Arguments for evaluate'''
         self.save_gap = 2  # save the policy network (actor.pth) for learning curve, +np.inf means don't save
-        self.eval_gap = 2 ** 7  # evaluate the agent per eval_gap seconds
+        self.eval_gap = 2 ** 4  # evaluate the agent per eval_gap seconds
         self.eval_times = 2 ** 4  # number of times that get episode return
         self.eval_env_func = None  # eval_env = eval_env_func(*eval_env_args)
         self.eval_env_args = None  # eval_env = eval_env_func(*eval_env_args)
+
+        '''Arguments for Experiment Description as folder suffix'''
+        self.desc = ""
 
     # if args.env is None, build a env & assign it to args.env
     def init_before_training(self):
@@ -89,14 +95,18 @@ class Arguments:
         torch.set_num_threads(self.thread_num)
         torch.set_default_dtype(torch.float32)
 
-        '''auto set cwd'''
+        '''auto set cwd, using ABSLUTE PATH'''
         # (project_root)/elegantrl/train/config.py
         prj_root = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))) # 3rd parent directory
         exp_path = osp.join(prj_root, "experiments")
         if not osp.exists(exp_path):
             os.mkdir(exp_path)
-        self.cwd =osp.join(exp_path, f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}_{get_formatted_time()}')
-        debug_print("cwd set in:", args=self.cwd, level=LogLevel.SUCCESS)
+        suffix_desc = "" if self.desc == "" else "_"+self.desc
+        self.cwd =osp.join(
+            exp_path,
+            f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}_{get_formatted_time()}'+suffix_desc
+        )
+        debug_print(f"<{__name__}.py/Arguments> cwd set in:", args=self.cwd, level=LogLevel.SUCCESS)
 
         '''remove history'''
         if self.if_remove is None:
@@ -104,14 +114,14 @@ class Arguments:
         elif self.if_remove:
             import shutil
             shutil.rmtree(self.cwd, ignore_errors=True)
-            debug_print("<Arguments.init_before_training> Remove cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
+            debug_print(f"<{__name__}.py/Arguments> Remove cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         else:
-            debug_print("<Arguments.init_before_training> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
+            debug_print(f"<{__name__}.py/Arguments> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         os.makedirs(self.cwd, exist_ok=True)
 
         '''build env if needed'''
         if self.env == None:
-            debug_msg("<Arguments.init_before_training> args.env is None, building env...")
+            debug_msg(f"<{__name__}.py/{self.__class__.__name__}.init_before_training> args.env is None, calling build_env()...")
             self.env = build_env(self.env, self.env_func, self.env_args)
 
     def get_env_attr_from_env_or_env_args(self, attr: str) -> Any:
@@ -122,10 +132,14 @@ class Arguments:
             attribute_value = None
         return attribute_value
 
-    def if_off_policy(self) -> bool: #type: ignore
+    def _if_off_policy(self) -> bool:
         name = self.agent_class.__name__
         if_off_policy = all((name.find('PPO') == -1, name.find('A2C') == -1)) # 当且仅当算法(agent)名称中既没有PPO，也没有A2C时，才是off_policy，也即一旦名称中包含PPO或A2C，即为on_policy，默认算法为off_plicy
+        # debug_print("Detecting Agent is off-policy:", if_off_policy, inline=True)
         return if_off_policy
+
+    def cwd_exists_pth(self) -> bool: # IMCOMPLETE
+        return osp.exists(self.cwd) #FIXME
 
     def print(self):
         # prints out args in a neat, readable format
@@ -159,7 +173,6 @@ def get_gym_env_args(env, if_print) -> dict:  # [ElegantRL.2021.12.12]
 
     if {'unwrapped', 'observation_space', 'action_space', 'spec'}.issubset(dir(env)):  # isinstance(env, gym.Env):
         env_name = getattr(env, 'env_name', None)
-        print(env_name)
         env_name = env.unwrapped.spec.id if env_name is None else env_name
 
         state_shape = env.observation_space.shape
@@ -232,9 +245,9 @@ def kwargs_filter(func, kwargs: dict):  # [ElegantRL.2021.12.12]
 
 
 def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[dict] = None):  # [ElegantRL.2021.12.12]
-    debug_msg("<config.py/builing_env> building env...")
+    debug_msg(f"<{__name__}.py/builing_env> building env...")
     if env is not None:
-        debug_msg(f"{__name__}.py/build_env> env is not None, deepcopy...")
+        # debug_msg(f"<{__name__}.py/build_env> env is not None, deepcopy...")
         env = deepcopy(env)
 
     else:
@@ -242,7 +255,7 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
         assert env_args is not None
         if env_func.__module__ == 'gym.envs.registration':
                  # ↳__module__ : 表示当前操作的对象（的类定义在）在那个模块
-            debug_print("<config.py/build_env> env is None, using", args=colorize("env_func()", Color.RED)+colorize(" initializing env...", color=LogLevel.DEBUG.value, bold=False), inline=True)
+            debug_print(f"<{__name__}.py/build_env> env is None, using", args=colorize(f"{env_func.__name__}", Color.RED)+colorize(" initializing env...", color=LogLevel.DEBUG.value, bold=False), inline=True)
             import gym
             gym.logger.set_level(40)  # Block warning
             env = env_func(id=env_args['env_name'])
@@ -255,7 +268,7 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
     return env
 
 def set_attr_for_env(env, env_args):
-    debug_msg(f"<{__name__}.py/set_attr_for_env> setattr for env...")
+    # debug_msg(f"<{__name__}.py/set_attr_for_env> setattr for env...")
     assert env_args is not None
     for attr_str in ('state_dim', 'action_dim', 'max_step', 'if_discrete', 'target_return'):
         if (not hasattr(env, attr_str)) and (attr_str in env_args):

@@ -1,4 +1,5 @@
 import os
+from tkinter import E
 from typing import List, Tuple, Union
 import numpy as np
 import numpy.random as rd
@@ -128,8 +129,11 @@ class ReplayBuffer:  # for off-policy
 
     def update_buffer(self, traj_list: List[List]):
         traj_items = list(map(list, zip(*traj_list)))
+        debug_print("traj_items", traj_items)
+        print(type(traj_items[0]))
+        print(traj_items[0][0].size())
 
-        states, rewards, masks, actions = [torch.cat(item, dim=0) for item in traj_items]
+        states, rewards, masks, actions = list(torch.cat(item, dim=0) for item in traj_items)
         self.add_capacity = rewards.shape[0]
         p = self.next_p + self.add_capacity  # update pointer
 
@@ -313,9 +317,9 @@ class ReplayBufferList(list):  # for on-policy
     def __init__(self):
         list.__init__(self)  # (buf_state, buf_reward, buf_mask, buf_action, buf_noise) = self[:]
 
-    def update_buffer(self, traj_list):
+    def update_buffer(self, traj_list): # FIXME
         # debug_msg(f"<{__name__}.py/ReplayBufferList.update_buffer>")
-        cur_items = list(map(list, zip(*traj_list))) # list of 5 list of 1 tensor of Tensor([ s_0, ... ]), s: Tensor of Size[batch_size, state_dim (24)]
+        cur_items = list(map(list, zip(*traj_list))) # list of 5 list of 1 tensor of Tensor([ s_0, ... ]), s: Tensor of Size[batch_size/horizon_len, state_dim (24)]
         '''cur_items:
         [ [tensor(states<Size[batch_size(e.g.77),   state_dim(e.g.24)]>)],
           [tensor(rewards)], 

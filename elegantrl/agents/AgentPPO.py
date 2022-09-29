@@ -1,5 +1,5 @@
-from ast import arg
-from typing import Tuple
+from tkinter.tix import ExFileSelectBox
+from typing import Tuple, List
 
 import numpy as np
 import torch
@@ -10,7 +10,7 @@ from elegantrl.agents.net import ActorPPO, ActorDiscretePPO, CriticPPO, SharePPO
 from elegantrl.train.config import \
     Arguments  # bug fix:NameError: name 'Arguments' is not defined def __init__(self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None):
 from elegantrl.train.replay_buffer import ReplayBufferList
-from utils import debug_msg, debug_print
+from utils import LogLevel, debug_msg, debug_print
 
 """[ElegantRL.2021.12.12](github.com/AI4Fiance-Foundation/ElegantRL)"""
 
@@ -31,7 +31,7 @@ class AgentPPO(AgentBase):
     """
 
     def __init__(
-            self, net_dim: int, state_dim: int, action_dim: int, gpu_id=0, args=None
+            self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None
     ):
         self.if_off_policy = False
         self.act_class = getattr(self, "act_class", ActorPPO)
@@ -56,7 +56,52 @@ class AgentPPO(AgentBase):
         else:
             self.get_reward_sum = self.get_reward_sum_raw
 
-    def explore_one_env(self, env, target_step, random_exploration=None) -> list:
+    def explore_one_env(self, env, horizon_len) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """
+        Collect trajectories through the actor-environment interaction.
+
+        :param env: the DRL environment instance.
+        :param horizon_len: the total step for the interaction.
+        :return:(
+                    states: Tensor [horizon_len, state_dim], 
+                    actions: Tensor [horizon_len, action_dim], 
+                    logprobs: Tensor [horizon_len], 
+                    rewards: Tensor [horizon_len, 1], 
+                    undones: Tensor [horizon_len, 1] 
+                )
+        """
+        states = torch.zeros((horizon_len, self.state_dim), dtype=torch.float32).to(self.device)
+        actions = torch.zeros((horizon_len, self.action_dim), dtype=torch.float32).to(self.device)
+        logprobs = torch.zeros(horizon_len, dtype=torch.float32).to(self.device)
+        rewards = torch.zeros(horizon_len, dtype=torch.float32).to(self.device)
+        dones = torch.zeros(horizon_len, dtype=torch.bool).to(self.device)
+
+        '''需要第一个state去从模型得到action, 再让env去step, 得到下一个state...'''
+        ary_state = self.states[0] # <numpy.ndarray> [state_dim: e.g. 24]
+
+        get_action = self.act.get_action
+        convert = self.act.convert_action_for_env
+        for i in range(horizon_len): # ~> only collect *horizon_len* length of tajectories
+            state = torch.as_tensor(ary_state, dtype=torch.float32, device=self.device) # TenosrSize: [state_dim]
+            action, logprob = [t.squeeze() for t in get_action(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
+            ary_action = convert(action).detach().cpu().numpy()
+            ary_state, reward, done, _ = env.step(ary_action) # => only put action of <numpy.ndarray> to env
+            if done:
+                ary_state = env.reset()
+
+            states[i] = state
+            actions[i] = action
+            logprobs[i] = logprob
+            rewards[i] = reward
+            dones[i] = done
+
+        self.states[0] = ary_state # 总是把最后一次与环境交互得到的（还没有返回的）state 作为 self.states[0]
+
+        rewards = (rewards * self.reward_scale).unsqueeze(1)
+        undones = (1 - dones.type(torch.float32)).unsqueeze(1)
+        return states, actions, logprobs, rewards, undones
+
+    def explore_one_env_old(self, env, target_step, random_exploration=None) -> list:
         """
         Collect trajectories through the actor-environment interaction.
 
@@ -123,7 +168,7 @@ class AgentPPO(AgentBase):
         self.states = ten_s
         return self.convert_trajectory(traj_list, last_done)  # traj_list
 
-    def update_net(self, buffer):
+    def update_net(self, buffer: ReplayBufferList):
         """
         Update the neural networks by sampling batch data from `ReplayBuffer`.
 
@@ -131,9 +176,75 @@ class AgentPPO(AgentBase):
             Using advantage normalization and entropy loss.
 
         :param buffer: the ReplayBuffer instance that stores the trajectories.
-        :param batch_size: the size of batch data for Stochastic Gradient Descent (SGD).
-        :param repeat_times: the re-using times of each trajectory.
-        :param soft_update_tau: the soft update parameter.
+        :return: a tuple of the log information.
+        """
+        with torch.no_grad():
+            states, actions, logprobs, rewards, undones = buffer
+            buffer_size = states.shape[0]
+
+            '''get advantages reward_sums'''
+            bs = 2 ** 10  # set a smaller 'batch_size' when out of GPU memory.
+            values = [self.cri(states[i:i + bs]) for i in range(0, buffer_size, bs)]
+            values = torch.cat(values, dim=0).squeeze(1)  # values.shape == (buffer_size, )
+            advantages = self.get_advantages(rewards, undones, values)  # advantages.shape == (buffer_size, )
+            reward_sums = advantages + values  # reward_sums.shape == (buffer_size, )
+            del rewards, undones, values
+
+            advantages = (advantages - advantages.mean()) / (advantages.std(dim=0) + 1e-5)
+        assert logprobs.shape == advantages.shape == reward_sums.shape == (buffer_size,)
+
+
+        '''update network'''
+        obj_critics = 0.0
+        obj_actors = 0.0
+
+        update_times = int(buffer_size * self.repeat_times / self.batch_size)
+        assert update_times >= 1
+        for _ in range(update_times):
+            indices = torch.randint(buffer_size, size=(self.batch_size,), requires_grad=False)
+            state = states[indices]
+            action = actions[indices]
+            logprob = logprobs[indices]
+            advantage = advantages[indices]
+            reward_sum = reward_sums[indices]
+
+            value = self.cri(state).squeeze(1)  # critic network predicts the reward_sum (Q value) of state
+            obj_critic = self.criterion(value, reward_sum)
+            self.optimizer_update(self.cri_optimizer, obj_critic)
+
+            """PPO: Surrogate objective of Trust Region"""
+            new_logprob, obj_entropy = self.act.get_logprob_entropy(state, action)
+            ratio = (new_logprob - logprob.detach()).exp()
+            surrogate1 = advantage * ratio
+            surrogate2 = advantage * ratio.clamp(1 - self.ratio_clip, 1 + self.ratio_clip)
+            obj_surrogate = torch.min(surrogate1, surrogate2).mean()
+
+            obj_actor = obj_surrogate + obj_entropy.mean() * self.lambda_entropy
+            self.optimizer_update(self.act_optimizer, -obj_actor)
+
+            obj_critics += obj_critic.item()
+            obj_actors += obj_actor.item()
+        a_std_log = getattr(self.act, 'a_std_log', torch.zeros(1)).mean()
+
+        debug_print("obj_actors:", obj_actors / update_times, level=LogLevel.ERROR, inline=True)
+        debug_print("advantages:", advantages, level=LogLevel.ERROR, inline=True)
+        debug_print("reward_sums:", reward_sums, level=LogLevel.ERROR, inline=True)
+        debug_print("actions:", actions, level=LogLevel.ERROR, inline=True)
+
+        # debug_print("advantages size", advantages.size(), level=LogLevel.ERROR)
+
+        # if (obj_actors / update_times) > 30: exit()
+
+        return obj_critics / update_times, obj_actors / update_times, a_std_log.item()
+
+    def update_net_old(self, buffer):
+        """
+        Update the neural networks by sampling batch data from `ReplayBuffer`.
+
+        .. note::
+            Using advantage normalization and entropy loss.
+
+        :param buffer: the ReplayBuffer instance that stores the trajectories.
         :return: a tuple of the log information.
         """
         with torch.no_grad():
@@ -252,134 +363,29 @@ class AgentPPO(AgentBase):
             # ten_mask[i] * pre_adv_v == (1-done) * gamma * pre_adv_v
         return buf_r_sum, buf_adv_v
 
+    def get_advantages(self, rewards: Tensor, undones: Tensor, values: Tensor) -> Tensor:
+        """
+        :param rewards: tensor of size [horizon_len/buffer_len, 1]
+        :param undones: tensor of size [horizon_len/buffer_len, 1]
+        :param values: tensor of size  [horizon_len/buffer_len]
+        :return: tensor of size        [horizon_len/buffer_len]
+        """
+        advantages = torch.empty_like(values)  # advantage value
+        masks = undones * self.gamma
+        horizon_len = rewards.shape[0]
 
-class AgentDiscretePPO(AgentPPO):
-    """
-    Bases: ``AgentPPO``
-
-    :param net_dim[int]: the dimension of networks (the width of neural networks)
-    :param state_dim[int]: the dimension of state (the number of state vector)
-    :param action_dim[int]: the dimension of action (the number of discrete action)
-    :param learning_rate[float]: learning rate of optimizer
-    :param if_per_or_gae[bool]: PER (off-policy) or GAE (on-policy) for sparse reward
-    :param env_num[int]: the env number of VectorEnv. env_num == 1 means don't use VectorEnv
-    :param agent_id[int]: if the visible_gpu is '1,9,3,4', agent_id=1 means (1,9,4,3)[agent_id] == 9
-    """
-
-    def __init__(
-            self, net_dim: int, state_dim: int, action_dim: int, gpu_id=0, args=None
-    ):
-        self.act_class = getattr(self, "act_class", ActorDiscretePPO)
-        self.cri_class = getattr(self, "cri_class", CriticPPO)
-        super().__init__(net_dim, state_dim, action_dim, gpu_id, args)
-
-
-# FIXME: this class is incomplete
-class AgentSharePPO(AgentPPO):
-    def __init__(self):
-        AgentPPO.__init__(self)
-        self.obj_c = (-np.log(0.5)) ** 0.5  # for reliable_lambda
-
-    def init(
-            self,
-            net_dim=256,
-            state_dim=8,
-            action_dim=2,
-            reward_scale=1.0,
-            gamma=0.99,
-            learning_rate=1e-4,
-            if_per_or_gae=False,
-            env_num=1,
-            gpu_id=0,
-    ):
-        self.device = torch.device(
-            f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu"
-        )
-        if if_per_or_gae:
-            self.get_reward_sum = self.get_reward_sum_gae
+        if self.states:
+            next_state = torch.tensor(np.array(self.states), dtype=torch.float32).to(self.device)
+            next_value = self.cri(next_state).detach()[0, 0]
         else:
-            self.get_reward_sum = self.get_reward_sum_raw
+            next_value = torch.zeros(1)[0] #FIXME only for multi-process
 
-        self.act = self.cri = SharePPO(state_dim, action_dim, net_dim).to(self.device)
-
-        self.cri_optim = torch.optim.Adam(
-            [
-                {"params": self.act.enc_s.parameters(), "lr": learning_rate * 0.9},
-                {
-                    "params": self.act.dec_a.parameters(),
-                },
-                {
-                    "params": self.act.a_std_log,
-                },
-                {
-                    "params": self.act.dec_q1.parameters(),
-                },
-                {
-                    "params": self.act.dec_q2.parameters(),
-                },
-            ],
-            lr=learning_rate,
-        )
-        self.criterion = torch.nn.SmoothL1Loss()
-
-    def update_net(self, buffer, batch_size, repeat_times, soft_update_tau):
-        with torch.no_grad():
-            buf_len = buffer[0].shape[0]
-            buf_state, buf_action, buf_noise, buf_reward, buf_mask = [
-                ten.to(self.device) for ten in buffer
-            ]
-            # (ten_state, ten_action, ten_noise, ten_reward, ten_mask) = buffer
-
-            """get buf_r_sum, buf_logprob"""
-            bs = 2 ** 10  # set a smaller 'BatchSize' when out of GPU memory.
-            buf_value = [
-                self.cri_target(buf_state[i: i + bs]) for i in range(0, buf_len, bs)
-            ]
-            buf_value = torch.cat(buf_value, dim=0)
-            buf_logprob = self.act.get_old_logprob(buf_action, buf_noise)
-
-            buf_r_sum, buf_adv_v = self.get_reward_sum(
-                buf_len, buf_reward, buf_mask, buf_value
-            )  # detach()
-            buf_adv_v = (buf_adv_v - buf_adv_v.mean()) * (
-                    self.lambda_a_value / torch.std(buf_adv_v) + 1e-5
-            )
-            # buf_adv_v: buffer data of adv_v value
-            del buf_noise, buffer[:]
-
-        obj_critic = obj_actor = None
-        for _ in range(int(buf_len / batch_size * repeat_times)):
-            indices = torch.randint(
-                buf_len, size=(batch_size,), requires_grad=False, device=self.device
-            )
-
-            state = buf_state[indices]
-            r_sum = buf_r_sum[indices]
-            adv_v = buf_adv_v[indices]  # advantage value
-            action = buf_action[indices]
-            logprob = buf_logprob[indices]
-
-            """PPO: Surrogate objective of Trust Region"""
-            new_logprob, obj_entropy = self.act.get_logprob_entropy(state, action)
-            # it is obj_actor  # todo net.py sharePPO
-            ratio = (new_logprob - logprob.detach()).exp()
-            surrogate1 = adv_v * ratio
-            surrogate2 = adv_v * ratio.clamp(1 - self.ratio_clip, 1 + self.ratio_clip)
-            obj_surrogate = -torch.min(surrogate1, surrogate2).mean()
-            obj_actor = obj_surrogate + obj_entropy * self.lambda_entropy
-
-            value = self.cri(state).squeeze(
-                1
-            )  # critic network predicts the reward_sum (Q value) of state
-            obj_critic = self.criterion(value, r_sum) / (r_sum.std() + 1e-6)
-
-            obj_united = obj_critic + obj_actor
-            self.optim_update(self.cri_optim, obj_united)
-            if self.if_use_cri_target:
-                self.soft_update(self.cri_target, self.cri, soft_update_tau)
-
-        a_std_log = getattr(self.act, "a_std_log", torch.zeros(1)).mean()
-        return obj_critic.item(), obj_actor.item(), a_std_log.item()  # logging_tuple
+        advantage = 0  # last_gae_lambda
+        for t in range(horizon_len - 1, -1, -1):
+            delta = rewards[t] + masks[t] * next_value - values[t]
+            advantages[t] = advantage = delta + masks[t] * self.lambda_gae_adv * advantage
+            next_value = values[t]
+        return advantages
 
 
 class AgentPPO_isaacgym(AgentBase):

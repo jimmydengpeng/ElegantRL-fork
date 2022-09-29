@@ -1,22 +1,25 @@
+from distutils import dep_util
+from distutils.log import debug
 import multiprocessing as mp
-from operator import imod
+from multiprocessing import Pipe
 import os
 import time
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import gym
 import numpy as np
 import torch
 
 from elegantrl.agents.AgentBase import AgentBase
+from elegantrl.agents.AgentPPO import AgentPPO
 from elegantrl.train.config import Arguments
 from elegantrl.train.config import build_env
 from elegantrl.train.evaluator import Evaluator
 from elegantrl.train.replay_buffer import ReplayBuffer, ReplayBufferList
-from utils import LogLevel, debug_msg, debug_print
+from utils import LogLevel, debug_msg, debug_print, pretty_time
 
 
-def init_agent(args: Arguments, gpu_id: int, env=None) -> AgentBase:
+def init_agent(args: Arguments, gpu_id: int, env=None) -> AgentPPO: #FIXME
     debug_msg("<run.py/init_agent> initializing agent...", level=LogLevel.INFO)
     agent = args.agent_class(args.net_dim, args.state_dim, args.action_dim, gpu_id=gpu_id, args=args)
     # if args.cwd_exists_pth():
@@ -60,7 +63,7 @@ def init_agent_isaacgym(args, gpu_id: int, env=None):
 
 def init_buffer(args: Arguments, gpu_id: int) -> Union[ReplayBuffer, ReplayBufferList]:
     debug_msg("initializing buffer...", level=LogLevel.INFO)
-    if args._if_off_policy:
+    if args.if_off_policy:
         debug_msg("  off-policy buffer...", level=LogLevel.INFO)
         buffer = ReplayBuffer(gpu_id=gpu_id,
                               max_capacity=args.max_memo,
@@ -113,7 +116,6 @@ def train_and_evaluate(args: Arguments):
         trajectory = agent.explore_env(env, args.num_seed_steps * args.num_steps_per_episode)
         buffer.update_buffer(trajectory)
 
-    '''start training'''
     '''copy args then del args'''
     cwd = args.cwd
     break_step = args.break_step
@@ -121,10 +123,10 @@ def train_and_evaluate(args: Arguments):
     if_allow_break = args.if_allow_break
     if_off_policy = args.if_off_policy
     del args
-    ''' (delete obj) 仅删除上文定义的args，如果之前实例化的时候传入Agent和Evaluator类的参数有args，引用不会被删除 
+    ''' ||> (delete obj) 仅删除上文定义的args，如果之前实例化的时候传入Agent和Evaluator类的参数有args，引用不会被删除 
         (实例化agen/buffer/evaluator的时候也并没有传入args的引用，仅使用其属性的值)'''
 
-    # debug_msg("start training...", LogLevel.INFO)
+    '''start training'''
     if_train = True
     while if_train:
         '''trajectory:
@@ -136,7 +138,10 @@ def train_and_evaluate(args: Arguments):
             noises: tensor(Size([78, 5(noises_dim)])), 
         ]
         '''
+        # debug_print("horizon_len", horizon_len)
         trajectory = agent.explore_env(env, horizon_len) 
+        # debug_print("trajectory", len(trajectory))
+        # debug_print("state", trajectory[0].size())
         # debug_msg(f"<{__name__}.py/.train_and_evaluate> trajectory:")
         # for i, t in enumerate(trajectory):
         #     debug_print(f"t{i} type:", args=type(t), inline=True)
@@ -146,7 +151,8 @@ def train_and_evaluate(args: Arguments):
         #     debug_print(f"t{i}[0] type", args=type(t[0]), inline=True)
         #     debug_print(f"t{i}[0] size", args=t[0].size(), inline=True)
         #     debug_print(f"t{i}[0]", args=(t[0]))
-        steps += horizon_len
+        steps = horizon_len
+        debug_print("steps:", steps, level=LogLevel.ERROR, inline=True)
         # steps, r_exp = buffer.update_buffer((trajectory,))
         if if_off_policy:
             buffer.update_buffer(trajectory)
@@ -203,11 +209,28 @@ class PipeWorker:
         self.pipes = [mp.Pipe() for _ in range(worker_num)]
         self.pipe1s = [pipe[1] for pipe in self.pipes]
 
-    def explore(self, agent: AgentBase):
-        act_dict = agent.act.state_dict()
+    def explore(self, agent: AgentBase) -> List[Tuple]: 
+        """
+        Pass agent.act.state_dict() to Worker Proccesses to explore env then recv traj and return.
+        (提供一个接口让 Learner 调用并得到 trajectoy_list)
+
+        return:
+            list of WORKER_NUM of traj: 
+            [
+                (
+                    states: Tensor [horizon_len, state_dim], 
+                    actions: Tensor [horizon_len, action_dim], 
+                    logprobs: Tensor [horizon_len], 
+                    rewards: Tensor [horizon_len, 1], 
+                    undones: Tensor [horizon_len, 1] 
+                ),
+                ... x WORKER_NUM 
+            ]
+        """
+        act_dict = agent.act.state_dict() # dict containing a whole state of the module
 
         for worker_id in range(self.worker_num):
-            self.pipe1s[worker_id].send(act_dict)
+            self.pipe1s[worker_id].send(act_dict) 
 
         traj_lists = [pipe1.recv() for pipe1 in self.pipe1s]
         return traj_lists
@@ -221,59 +244,17 @@ class PipeWorker:
         agent = init_agent(args, gpu_id, env)
 
         '''loop'''
-        target_step = args.target_step
-        if args._if_off_policy:
-            trajectory = agent.explore_env(env, args.target_step)
+        horizon_len = args.horizon_len
+        if args.if_off_policy:
+            trajectory = agent.explore_env(env, args.horizon_len)
             self.pipes[worker_id][0].send(trajectory)
         del args
 
         while True:
             act_dict = self.pipes[worker_id][0].recv()
-            agent.act.load_state_dict(act_dict)
-            trajectory = agent.explore_env(env, target_step)
+            agent.act.load_state_dict(act_dict) # Copy parameters and buffers from state_dict into this module and its descendants
+            trajectory = agent.explore_env(env, horizon_len)
             self.pipes[worker_id][0].send(trajectory)
-
-
-# import wandb
-class PipeLearner:
-    def __init__(self):
-        # wandb.init(project="DDPG_H")
-        pass
-
-    @staticmethod
-    def run(args: Arguments, comm_eva: mp.Pipe, comm_exp: mp.Pipe):
-        torch.set_grad_enabled(False)
-        gpu_id = args.learner_gpus
-        cwd = args.cwd
-        # wandb.init(project="DDPG_H")
-
-        '''init'''
-        agent = init_agent(args, gpu_id)
-        buffer = init_buffer(args, gpu_id)
-
-        '''loop'''
-        if_train = True
-        while if_train:
-            traj_list = comm_exp.explore(agent)
-            steps, r_exp = buffer.update_buffer(traj_list)
-
-            torch.set_grad_enabled(True)
-            logging_tuple = agent.update_net(buffer)
-            torch.set_grad_enabled(False)
-            # wandb.log({"obj_cri": logging_tuple[0], "obj_act": logging_tuple[1]})
-            if_train, if_save = comm_eva.evaluate_and_save_mp(agent.act, steps, r_exp, logging_tuple)
-        agent.save_or_load_agent(cwd, if_save=True)
-        print(f'| Learner: Save in {cwd}')
-
-        # env = build_env(env_func=args.env_func, env_args=args.env_args)
-        buffer.get_state_norm(
-            cwd=cwd,
-            # state_avg=getattr(env, 'state_avg', 0.0),
-            # state_std=getattr(env, 'state_std', 1.0),
-        )
-        if hasattr(buffer, 'save_or_load_history'):
-            print(f"| LearnerPipe.run: ReplayBuffer saving in {cwd}")
-            buffer.save_or_load_history(cwd, if_save=True)
 
 
 class PipeEvaluator:
@@ -281,7 +262,7 @@ class PipeEvaluator:
         self.pipe0, self.pipe1 = mp.Pipe()
 
     def evaluate_and_save_mp(self, act, steps: int, r_exp: float, logging_tuple: tuple) -> (bool, bool):
-        if self.pipe1.poll():  # if_evaluator_idle
+        if self.pipe1.poll():  # 轮询是否有数据可读 # if_evaluator_idle
             if_train, if_save_agent = self.pipe1.recv()
             act_state_dict = act.state_dict().copy()  # deepcopy(act.state_dict())
         else:
@@ -331,11 +312,58 @@ class PipeEvaluator:
                             or os.path.exists(f'{cwd}/stop'))
             self.pipe0.send((if_train, if_save))
 
-        print(f'| UsedTime: {time.time() - evaluator.start_time:>7.0f} | SavedDir: {cwd}')
+        debug_print("UsedTime:", pretty_time(time.time() - evaluator.start_time), level=LogLevel.SUCCESS, inline=True)
+        debug_print("SavedDir:", cwd, level=LogLevel.SUCCESS)
+        # print(f'| UsedTime: {time.time() - evaluator.start_time:>7.0f} | SavedDir: {cwd}')
 
         while True:  # wait for the forced stop from main process
             self.pipe0.recv()
             self.pipe0.send((False, False))
+
+
+class PipeLearner:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def run(args: Arguments, comm_eva: PipeEvaluator, comm_exp: PipeWorker):
+        torch.set_grad_enabled(False)
+        gpu_id = args.learner_gpus
+        cwd = args.cwd
+
+        '''init'''
+        agent = init_agent(args, gpu_id)
+        buffer = init_buffer(args, gpu_id)
+        steps = 0
+
+        '''loop'''
+        if_train = True
+        while if_train:
+            traj_list = comm_exp.explore(agent) # list of tuple * worker_num: [(t, t, t, t, t),...]
+            trajectory = [torch.cat(t_list) for t_list in list(zip(*traj_list))]
+            steps = trajectory[0].size()[0]
+            debug_print("steps", steps, level=LogLevel.ERROR, inline=True)
+            # steps, r_exp = buffer.update_buffer(traj_list)
+            r_exp = trajectory[3].mean().item()
+            torch.set_grad_enabled(True)
+            logging_tuple = agent.update_net(trajectory)
+            torch.set_grad_enabled(False)
+            # wandb.log({"obj_cri": logging_tuple[0], "obj_act": logging_tuple[1]})
+            if_train, if_save = comm_eva.evaluate_and_save_mp(agent.act, steps, r_exp, logging_tuple)
+        agent.save_or_load_agent(cwd, if_save=True)
+        debug_print("Learner: Save in:", cwd, level=LogLevel.SUCCESS)
+        # print(f'| Learner: Save in {cwd}')
+
+        # env = build_env(env_func=args.env_func, env_args=args.env_args)
+        # buffer.get_state_norm(
+            # cwd=cwd,
+            # state_avg=getattr(env, 'state_avg', 0.0),
+            # state_std=getattr(env, 'state_std', 1.0),
+        # ) # FIXME
+        # if hasattr(buffer, 'save_or_load_history'):
+        #     print(f"| LearnerPipe.run: ReplayBuffer saving in {cwd}")
+        #     buffer.save_or_load_history(cwd, if_save=True)
+
 
 
 def process_safely_terminate(process: list):

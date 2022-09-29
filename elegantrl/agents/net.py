@@ -2,6 +2,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.distributions.normal import Normal
 import numpy as np
 import numpy.random as rd
 from torch.nn.parameter import Parameter
@@ -383,12 +384,17 @@ class ActorFixSAC(nn.Module):
 class ActorPPO(nn.Module):
     def __init__(self, mid_dim: int, num_layer: int, state_dim: int, action_dim: int):
         super().__init__()
+        # self.net = nn.Sequential(
+        #     nn.Linear(state_dim, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 128),
+        #     nn.ReLU(),
+        #     nn.Linear(128, action_dim)
+        # )
         self.net = nn.Sequential(
             nn.Linear(state_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, action_dim)
+            nn.Tanh(),
+            nn.Linear(256, action_dim)
         )
         # the logarithm (log) of standard deviation (std) of action, it is a trainable parameter
         # self.action_std_log = nn.Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
@@ -398,14 +404,14 @@ class ActorPPO(nn.Module):
     def forward(self, state: Tensor) -> Tensor:
         return self.net(state).tanh()  # action.tanh()
 
-    def get_action(self, state: Tensor) -> Tuple[Tensor, Tensor]:
+    def get_action(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
         action_avg = self.net(state)
         action_std = self.action_std_log.exp()
 
-        noise = torch.randn_like(action_avg)
-        action = action_avg + noise * action_std
-        
-        return action, noise # torch.Size([1, 4])   torch.Size([1, 4]) 
+        dist = Normal(action_avg, action_std)
+        action = dist.sample()
+        logprob = dist.log_prob(action).sum(1)
+        return action, logprob
 
     def get_logprob(self, state: Tensor, action: Tensor) -> Tensor:
         action_avg = self.net(state)
@@ -432,6 +438,7 @@ class ActorPPO(nn.Module):
     @staticmethod
     def convert_action_for_env(action: Tensor) -> Tensor:
         return action.tanh()
+
     @staticmethod
     def get_a_to_e(action):  # convert action of network to action of environment
         return action.tanh()

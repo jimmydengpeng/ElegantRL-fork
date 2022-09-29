@@ -1,4 +1,5 @@
 from enum import Enum
+from time import time
 from typing import Any, Optional
 
 '''
@@ -53,7 +54,7 @@ LogSymbol = dict({
     LogLevel.WARNING:  "⚠",
     LogLevel.ERROR:    "✖"
 })
-'''alternatives: ➤  ☞ ⚑ '''
+'''alternatives:  ➤  ☞ ⚑  ◎ ⊙  ⇨ ▶'''
 
 def debug_msg(
         msg: str,
@@ -107,6 +108,40 @@ def get_formatted_time():
     import time
     return time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
+def pretty_time(time_in_sec) -> str:
+    unit_s = colorize("s", color=Color.GREEN, bold=False)
+    unit_m = colorize("m", color=Color.YELLOW, bold=False)
+    unit_h = colorize("h", color=Color.RED, bold=False)
+
+    def get_s(t) -> str:
+        return colorize(str(t), color=Color.GREEN) + \
+               colorize("s", color=Color.GREEN, bold=False)
+
+    def get_m(t) -> str:
+        return colorize(str(t), color=Color.YELLOW) + \
+               colorize("m", color=Color.YELLOW, bold=False)
+
+    def get_h(t) -> str:
+        return colorize(str(t), color=Color.RED) + \
+               colorize("h", color=Color.RED, bold=False)
+
+    time_in_sec = int(time_in_sec)
+    if time_in_sec <= 100:
+        return get_s(time_in_sec)
+
+    elif time_in_sec > 60 and time_in_sec <= (60 * 60):
+        m = time_in_sec // 60
+        s = time_in_sec % 60
+        return get_m(m) + get_s(s)
+
+    elif time_in_sec > (60 * 60): 
+        unit = "h"
+        h = time_in_sec // (60 * 60)
+        remainder = time_in_sec % (60 * 60)
+        m = remainder // 60 
+        s = remainder % 60
+        return get_h(h) + get_m(m) + get_s(s)
+    
 
 def get_space_dim(space):
     import gym.spaces
@@ -115,7 +150,7 @@ def get_space_dim(space):
     elif isinstance(space, gym.spaces.Discrete):
         return space.n  # type: ignore
 
- 
+
 def test_get_space_dim():
     import gym
     from elegantrl.train.config import get_gym_env_args
@@ -156,7 +191,9 @@ def test_debug_log_functions():
 
 if __name__ == "__main__":
     # test_debug_log_functions()
-
-
-
-    test_get_space_dim()
+    # test_get_space_dim()
+    print(pretty_time(10))
+    print(pretty_time(100))
+    print(pretty_time(600))
+    print(pretty_time(3923))
+    print(pretty_time(7600))

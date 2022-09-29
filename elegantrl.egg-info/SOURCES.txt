@@ -63,6 +63,7 @@ examples/demo_PPO_H.py
 examples/demo_mujoco_draw_obj_h.py
 examples/demo_mujoco_render.py
 examples/list_gym_envs.py
+examples/rollout_BipedalWalker-v3.py
 examples/tutorial_BipedalWalker-v3.py
 examples/tutorial_Hopper-v2_H.py
 examples/tutorial_Hopper-v3.py

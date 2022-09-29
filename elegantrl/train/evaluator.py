@@ -116,7 +116,7 @@ class Evaluator:
             self.total_step = self.recorder[-1][0]
 
 class Evaluator_isaacgym:
-    def __init__(self, cwd, agent_id, eval_env, args):
+    def __init__(self, cwd, agent_id, eval_env, args: Arguments):
         self.recorder = []  # total_step, r_avg, r_std, obj_c, ...
         self.recorder_path = f'{cwd}/recorder.npy'
 
@@ -127,7 +127,7 @@ class Evaluator_isaacgym:
         self.eval_gap = args.eval_gap
         self.eval_times = args.eval_times
         self.target_return = args.target_return
-        self.target_step = args.target_step
+        self.horizon_len = args.horizon_len
         self.if_Isaac = args.if_Isaac
         self.tensorboard = SummaryWriter(f"{cwd}/tensorboard")
         self.evaluate_save_and_plot = self.evaluate_save_and_plot_reevaluate if args.reevaluate else self.evaluate_save_and_plot_raw
@@ -284,7 +284,7 @@ class Evaluator_isaacgym:
 """util"""
 
 
-def get_cumulative_returns_and_step(env, act) -> (float, int):  
+def get_cumulative_returns_and_step(env, act) -> Tuple[float, int]:  
     """Usage
     eval_times = 4
     net_dim = 2 ** 7
