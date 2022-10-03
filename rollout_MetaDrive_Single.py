@@ -1,4 +1,6 @@
+from ast import parse
 from collections import defaultdict
+import argparse
 import random, time
 import sys
 import os.path as osp
@@ -11,8 +13,14 @@ from elegantrl.train.config import Arguments, build_env
 from elegantrl.agents.AgentPPO import AgentPPO
 from utils import debug_msg, debug_print, get_space_dim, LogLevel, pretty_time
 
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--testrender', type=bool, default=True)
+# ter_args = parser.parse_args()
+
 can_render = not sys.platform == 'darwin'
-linux_render = True
+linux_render = False
+# linux_render = True
 
 # build env
 env_config = dict(
@@ -21,8 +29,8 @@ env_config = dict(
     environment_num=100,
     random_agent_model=False,
     random_lane_width=False,
-    random_lane_num=False,
-    map=5,  # seven block
+    random_lane_num=True,
+    map=4,  # seven block
     # map="SCrRX",
     start_seed=random.randint(0, 1000)
 )
@@ -40,10 +48,13 @@ env_args = {
 # cwd
 # "MetaDrive-single_PPO_0_20220922_191206"
 # agent_dir_name = "MetaDrive-single_PPO_0_20220922_002256"
+# agent_dir_name = "MetaDrive-Single_PPO_0_20220922_225932"
+# agent_dir_name = "MetaDrive-Single-Agent_PPO_0_20221002_201613_6w6t_test"
 # agent_dir_name = "MetaDrive-Single_PPO_0_20220927_202657"
 # agent_dir_name = "MetaDrive-Single-Agent_PPO_0_20220927_231734_w6t6"
 # agent_dir_name = "MetaDrive-Single_PPO_0_20220923_082311"
-agent_dir_name = "MetaDrive-Single-Agent_PPO_0_20220928_110248_7w7t"
+# agent_dir_name = "MetaDrive-Single-Agent_PPO_0_20220928_110248_7w7t"
+agent_dir_name = "MetaDrive-Single-Agent_PPO_0_20221003_020700_6w6t_test"
 exp_dir_name = osp.join("experiments", agent_dir_name)
 cwd = osp.join(osp.dirname(osp.abspath(__file__)), exp_dir_name)
 
@@ -71,20 +82,20 @@ epi_step_i = 0
 t_0 = time.time()
 
 if_test_success_rate = True
-totle_test_times = 300
-cur_test_time = 0
+TEST_TIMES = 100
+cur_test_time = 1
 test_done_dict = defaultdict(int)
 
 test_start_time = time.time()
 
-with tqdm(total=totle_test_times, desc="Test Progress") as pbar:
+with tqdm(total=TEST_TIMES, desc="Test Progress") as pbar:
     while True:
         ten_s = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0) # 在指定位置插入维度 1, 变成 torch.Size([1, 24])
         ten_a, ten_n = [
             ten.cpu() for ten in get_action(ten_s.to(agent.device))
         ] # action: torch.Size([1, 4]),  noise: torch.Size([1, 4])
         action = get_a_to_e(ten_a)[0].detach().numpy()
-        debug_print("action:", action, inline=True)
+        # debug_print("action:", action, inline=True)
         next_s, reward, done, info = env.step(action)
         state = env.reset() if done else next_s
         episode_reward += reward
@@ -92,7 +103,7 @@ with tqdm(total=totle_test_times, desc="Test Progress") as pbar:
         if done:
             cur_test_time += 1
             pbar.update(1)
-            if cur_test_time > totle_test_times:
+            if cur_test_time > TEST_TIMES:
                 test_end_time = time.time()
                 break
 
@@ -116,22 +127,22 @@ with tqdm(total=totle_test_times, desc="Test Progress") as pbar:
             t_0 = time.time()
         # env.render()
 
-debug_print("Avg Return:", np.array(returns).mean(), level=LogLevel.SUCCESS, inline=True)
 if if_test_success_rate:
-    debug_print("Totle test times:", totle_test_times, level=LogLevel.INFO, inline=True)
+    debug_print("Totle test times:", TEST_TIMES, level=LogLevel.INFO, inline=True)
     test_time_spent = test_end_time - test_start_time
-    time_unit = "s"
-    if test_time_spent > 60:
-        test_time_spent = test_time_spent / 60
-        time_unit = "min"
-    # debug_msg(f"Test spent {test_time_spent:.2f} {time_unit}", level=LogLevel.INFO)
     debug_print("Test spent", pretty_time(test_time_spent), level=LogLevel.INFO, inline=True)
 
-    succ_rate = test_done_dict["arrive_dest"] / totle_test_times
+    succ_rate = test_done_dict["arrive_dest"] / TEST_TIMES
     debug_msg(f"Success Rate: {succ_rate * 100}%", level=LogLevel.SUCCESS)
 
-    crash_rate = test_done_dict["crash"] / totle_test_times
+    crash_rate = test_done_dict["crash"] / TEST_TIMES
     debug_msg(f"Crash Rate: {crash_rate * 100}%", level=LogLevel.ERROR)
 
-    out_of_road_rate = test_done_dict["out_of_road"] / totle_test_times
+    out_of_road_rate = test_done_dict["out_of_road"] / TEST_TIMES
     debug_msg(f"Out_of_road Rate: {out_of_road_rate * 100}%", level=LogLevel.WARNING)
+
+debug_print("Avg Return:", f"{np.array(returns).mean():.2f}", level=LogLevel.SUCCESS, inline=True)
+import matplotlib.pyplot as plt
+x = np.linspace(1, len(returns), len(returns))
+plt.plot(x, returns)
+plt.show()

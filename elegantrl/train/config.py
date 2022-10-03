@@ -57,8 +57,8 @@ class Arguments:
         self.gamma = 0.99  # discount factor of future rewards
         self.reward_scale = 2 ** 0  # an approximate target reward usually be closed to 256
         self.lambda_critic = 2 ** 0  # the objective coefficient of critic network
-        self.learning_rate = 2 ** -15  # 2 ** -15 ~= 3e-5
-        # self.learning_rate = 3e-4
+        # self.learning_rate = 2 ** -15  # 2 ** -15 ~= 3e-5
+        self.learning_rate = 3e-4
         self.soft_update_tau = 2 ** -8  # 2 ** -8 ~= 5e-3
         self.clip_grad_norm = 3.0  # 0.1 ~ 4.0, clip the gradient after normalization
         self.if_use_old_traj = False  # save old data to splice and get a complete trajectory (for vector env)

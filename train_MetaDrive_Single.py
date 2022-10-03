@@ -31,8 +31,8 @@ metadrive_env_config = dict(
         traffic_mode=TrafficMode.Trigger,  # "Respawn", "Trigger"
         environment_num=100,
         # max_step_per_agent=1000,
-        random_agent_model=True,
-        random_lane_width=True,
+        random_agent_model=False,
+        random_lane_width=False,
         random_lane_num=True,
         # lane_num=2,
         map=4,  # seven block
@@ -60,7 +60,7 @@ env_args = {
     "state_dim": get_space_dim(env.observation_space),
     "action_dim": get_space_dim(env.action_space),
     "if_discrete": False,
-    "target_return": 300,
+    "target_return": 400,
     # "id": "BipedalWalker-v3",
 }
 # set_attr_for_env(env, env_args)
@@ -78,18 +78,21 @@ debug_print("args.action_dim", args=args.action_dim, inline=True)
 args.target_step = args.max_step * 4 # horizon_len for exploration
 args.gamma = 0.98
 args.learning_rate = 3e-4
-args.eval_times = 2 ** 4
+args.ration_clip = 0.2
+args.eval_times = 2 ** 5
 args.horizon_len = 8192 # args.batch_size * 4
 args.learner_gpus = ter_args.gpuid
 args.desc = ter_args.desc
+args.if_use_gae = True
+# args.repeat_times = 1
 
 # set processes & threads
 if sys.platform == "darwin": # only for my mac M1 Pro chip
     debug_msg("On Mac")
     args.learner_gpus = 0
-    args.worker_num = 2
-    args.thread_num = 2
-    args.desc = "2w2t"
+    args.worker_num = 6
+    args.thread_num = 6
+    args.desc = "6w6t_test"
 else:
     args.worker_num = ter_args.worker
     args.thread_num = ter_args.thread
@@ -100,31 +103,25 @@ debug_print("Env   name:", args=args.env_name, level=LogLevel.INFO, inline=True)
 
 ''' EXPERIMENT CONSTANTS '''
 CONTINUOUS_TRAINING = False
-FLAG = "MultiProcess"
 
 if __name__ == '__main__':
     times = []
-    if FLAG == "SingleProcess":
-        debug_msg(">>> Single Process <<<", level=LogLevel.INFO)
-        train_and_evaluate(args)
+    debug_msg(">>> Multi-Process <<<", level=LogLevel.INFO)
 
-    elif FLAG == "MultiProcess":
-        debug_msg(">>> Multi-Process <<<", level=LogLevel.INFO)
-
-        if CONTINUOUS_TRAINING:
-            for i in range(1, 11):
-                debug_msg(f"=== train_and_evaluate_mp: {i} of 10 ===", level=LogLevel.SUCCESS)
-                start = time.time()
-                train_and_evaluate_mp(args)
-                end = time.time()
-                debug_print(f"=== train_and_evaluate_mp: {i} of 10 ===", args=(end-start), level=LogLevel.SUCCESS)
-                times.append(end-start)
-            debug_print(">>>> total times:", args=times)
-        else:
+    if CONTINUOUS_TRAINING:
+        for i in range(1, 11):
+            debug_msg(f"=== train_and_evaluate_mp: {i} of 10 ===", level=LogLevel.SUCCESS)
+            start = time.time()
             train_and_evaluate_mp(args)
+            end = time.time()
+            debug_print(f"=== train_and_evaluate_mp: {i} of 10 ===", args=(end-start), level=LogLevel.SUCCESS)
+            times.append(end-start)
+        debug_print(">>>> total times:", args=times)
+    else:
+        train_and_evaluate_mp(args)
 
 
-   # elif FLAG == "MultiGPU":
+    # elif FLAG == "MultiGPU":
     #     args.learner_gpus = [0, 1, 2, 3]
     #     train_and_evaluate_mp(args)
     # elif FLAG == "Tournament-based":
@@ -133,5 +130,3 @@ if __name__ == '__main__':
     #     ]  # [[0,], [1, ], [2, ]] or [[0, 1], [2, 3]]
     #     python_path = "../bin/python3"
     #     train_and_evaluate_mp(args, python_path) #type: ignore #TODO # multiple processing 
-    else:
-        raise ValueError(f"Unknown flag: {FLAG}")

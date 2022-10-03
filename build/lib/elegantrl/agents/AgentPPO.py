@@ -66,7 +66,7 @@ class AgentPPO(AgentBase):
         last_done = [
             0,
         ]
-        state = self.states[0]
+        state = self.last_states[0]
 
         step_i = 0
         done = False
@@ -83,7 +83,7 @@ class AgentPPO(AgentBase):
 
             step_i += 1
             state = env.reset() if done else next_s
-        self.states[0] = state
+        self.last_states[0] = state
         last_done[0] = step_i
         return self.convert_trajectory(traj_list, last_done)  # traj_list
 
@@ -97,7 +97,7 @@ class AgentPPO(AgentBase):
         """
         traj_list = []
         last_done = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
-        ten_s = self.states
+        ten_s = self.last_states
 
         step_i = 0
         ten_dones = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
@@ -115,7 +115,7 @@ class AgentPPO(AgentBase):
             last_done[torch.where(ten_dones)[0]] = step_i  # behind `step_i+=1`
             ten_s = ten_s_next
 
-        self.states = ten_s
+        self.last_states = ten_s
         return self.convert_trajectory(traj_list, last_done)  # traj_list
 
     def update_net(self, buffer):

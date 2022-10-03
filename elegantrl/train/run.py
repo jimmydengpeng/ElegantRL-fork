@@ -39,7 +39,7 @@ def init_agent(args: Arguments, gpu_id: int, env=None) -> AgentPPO: #FIXME
             states = env.reset()
             assert isinstance(states, torch.Tensor)
             assert states.shape == (args.env_num, args.state_dim)
-        agent.states = states
+        agent.last_states = states
     return agent
 
 

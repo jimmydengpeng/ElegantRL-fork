@@ -43,7 +43,7 @@ class AgentBase:
         self.if_off_policy = getattr(args, 'if_off_policy', False)
         self.if_use_old_traj = getattr(args, 'if_use_old_traj', False)
 
-        self.states: List[np.ndarray] = []
+        self.last_states: List[np.ndarray] = []
         self.device = torch.device(f"cuda:{gpu_id}" if (torch.cuda.is_available() and (gpu_id >= 0)) else "cpu")
         self.traj_list = [[torch.tensor((), dtype=torch.float32, device=self.device)
                            for _ in range(4 if self.if_off_policy else 5)]
@@ -57,7 +57,7 @@ class AgentBase:
             if cri_class else self.act
 
         '''optimizer'''
-        self.act_optimizer = torch.optim.Adam(self.act.parameters(), self.learning_rate)
+        self.act_optimizer = torch.optim.Adam(self.act.parameters(), self.learning_rate, eps=1e-5)
         self.cri_optimizer = torch.optim.Adam(self.cri.parameters(), self.learning_rate) \
             if cri_class else self.act_optimizer
         from types import MethodType  # built-in package of Python3
@@ -113,7 +113,7 @@ class AgentBase:
         """
         traj_list = []
         last_dones = [0, ]
-        state = self.states[0]
+        state = self.last_states[0]
 
         i = 0
         done = False
@@ -127,7 +127,7 @@ class AgentBase:
             i += 1
             state = env.reset() if done else next_state
 
-        self.states[0] = state
+        self.last_states[0] = state
         last_dones[0] = i
         return self.convert_trajectory(traj_list, last_dones)  # traj_list
 
@@ -143,7 +143,7 @@ class AgentBase:
         """
         traj_list = []
         last_dones = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
-        states = self.states if self.if_use_old_traj else env.reset()
+        states = self.last_states if self.if_use_old_traj else env.reset()
 
         i = 0
         dones = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
@@ -157,7 +157,7 @@ class AgentBase:
             last_dones[torch.where(dones)[0]] = i  # behind `step_i+=1`
             states = next_states
 
-        self.states = states
+        self.last_states = states
         return self.convert_trajectory(traj_list, last_dones)  # traj_list
 
     # def update_net(self, buffer: ReplayBuffer) -> tuple:

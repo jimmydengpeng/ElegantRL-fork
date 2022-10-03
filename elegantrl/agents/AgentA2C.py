@@ -124,7 +124,7 @@ class AgentDiscreteA2C(AgentA2C):
         :param gamma: the discount factor.
         :return: a list of trajectories [traj, ...] where each trajectory is a list of transitions [(state, other), ...].
         """
-        state = self.states[0]
+        state = self.last_states[0]
 
         last_done = 0
         traj = []
@@ -141,7 +141,7 @@ class AgentDiscreteA2C(AgentA2C):
             else:
                 state = next_s
 
-        self.states[0] = state
+        self.last_states[0] = state
 
         traj_list = self.splice_trajectory(
             [
@@ -163,7 +163,7 @@ class AgentDiscreteA2C(AgentA2C):
         :param gamma: the discount factor.
         :return: a list of trajectories [traj, ...] where each trajectory is a list of transitions [(state, other), ...].
         """
-        ten_states = self.states
+        ten_states = self.last_states
 
         env_num = len(self.traj_list)
         traj_list = [[] for _ in range(env_num)]  # [traj_env_0, ..., traj_env_i]
@@ -188,7 +188,7 @@ class AgentDiscreteA2C(AgentA2C):
 
             ten_states = tem_next_states
 
-        self.states = ten_states
+        self.last_states = ten_states
 
         traj_list = self.splice_trajectory(traj_list, last_done_list)
         return self.convert_trajectory(traj_list)  # [traj_env_0, ...]

@@ -1,6 +1,8 @@
+from distutils.log import debug
 from tkinter.tix import ExFileSelectBox
 from typing import Tuple, List
-
+import gym
+from gym.spaces.box import Box
 import numpy as np
 import torch
 from torch import Tensor
@@ -40,7 +42,7 @@ class AgentPPO(AgentBase):
         AgentBase.__init__(self, net_dim, state_dim, action_dim, gpu_id, args)
 
         self.ratio_clip = getattr(
-            args, "ratio_clip", 0.25
+            args, "ratio_clip", 0.2
         )  # could be 0.00 ~ 0.50 `ratio.clamp(1 - clip, 1 + clip)`
         self.lambda_entropy = getattr(
             args, "lambda_entropy", 0.02
@@ -77,13 +79,37 @@ class AgentPPO(AgentBase):
         dones = torch.zeros(horizon_len, dtype=torch.bool).to(self.device)
 
         '''需要第一个state去从模型得到action, 再让env去step, 得到下一个state...'''
-        ary_state = self.states[0] # <numpy.ndarray> [state_dim: e.g. 24]
+        ary_state = self.last_states[0] # <numpy.ndarray> [state_dim: e.g. 24]
 
-        get_action = self.act.get_action
+        get_action = self.act.get_action_logprob
         convert = self.act.convert_action_for_env
         for i in range(horizon_len): # ~> only collect *horizon_len* length of tajectories
             state = torch.as_tensor(ary_state, dtype=torch.float32, device=self.device) # TenosrSize: [state_dim]
             action, logprob = [t.squeeze() for t in get_action(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
+
+            
+            # for _ in range(10000):
+            #     action, logprob = [t.squeeze() for t in get_action(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
+            #     actions1.append(action[0].item())
+            #     logps1.append(logprob.item())
+
+            # for _ in range(10000):
+            #     action2, noise = [t.squeeze() for t in self.act.get_action_noise(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
+            #     actions2.append(action2[0].item())
+            #     noise_ = noise.unsqueeze(0)
+            #     old_logprob = self.act.get_old_logprob(action2, noise_).squeeze(0)
+            #     logps2.append(old_logprob.item())
+            #     # debug_print("action1", self.act.get_logprob_entropy(state.unsqueeze(0), action))
+            #     # debug_print("action1", self.act.get_logprob_entropy(state.unsqueeze(0), action2))
+
+     
+            """ action size[action_dim]"""
+            """ logprob size[]"""
+
+            # assert isinstance(env.action_space, Box)
+            # ary_action = np.clip(action.cpu().numpy(), env.action_space.low, env.action_space.high)
+            # ary_action = action.detach().tanh().cpu().numpy()
+
             ary_action = convert(action).detach().cpu().numpy()
             ary_state, reward, done, _ = env.step(ary_action) # => only put action of <numpy.ndarray> to env
             if done:
@@ -95,7 +121,7 @@ class AgentPPO(AgentBase):
             rewards[i] = reward
             dones[i] = done
 
-        self.states[0] = ary_state # 总是把最后一次与环境交互得到的（还没有返回的）state 作为 self.states[0]
+        self.last_states[0] = ary_state # 总是把最后一次与环境交互得到的（还没有返回的）state 作为 self.states[0]
 
         rewards = (rewards * self.reward_scale).unsqueeze(1)
         undones = (1 - dones.type(torch.float32)).unsqueeze(1)
@@ -113,9 +139,9 @@ class AgentPPO(AgentBase):
         last_done = [
             0,
         ]
-        assert self.states is not None
+        assert self.last_states is not None
         '''需要第一个state去从模型得到action，再让env去step，得到下一个state...'''
-        state = self.states[0] # <numpy.ndarray> [24]
+        state = self.last_states[0] # <numpy.ndarray> [24]
         assert isinstance(state, np.ndarray)
 
         step_i = 0
@@ -132,7 +158,7 @@ class AgentPPO(AgentBase):
             traj_list.append((ten_s, reward, done, ten_a, ten_n))  # different
             step_i += 1
             state = env.reset() if done else next_s
-        self.states[0] = state
+        self.last_states[0] = state
         last_done[0] = step_i
         # debug_print(f"<{__name__}.py/explore_one_env> traj_list:", args=len(traj_list), inline=True)
         return self.convert_trajectory(traj_list, last_done)  # traj_list
@@ -147,7 +173,7 @@ class AgentPPO(AgentBase):
         """
         traj_list = []
         last_done = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
-        ten_s = self.states
+        ten_s = self.last_states
 
         step_i = 0
         ten_dones = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
@@ -165,7 +191,7 @@ class AgentPPO(AgentBase):
             last_done[torch.where(ten_dones)[0]] = step_i  # behind `step_i+=1`
             ten_s = ten_s_next
 
-        self.states = ten_s
+        self.last_states = ten_s
         return self.convert_trajectory(traj_list, last_done)  # traj_list
 
     def update_net(self, buffer: ReplayBufferList):
@@ -197,7 +223,6 @@ class AgentPPO(AgentBase):
         '''update network'''
         obj_critics = 0.0
         obj_actors = 0.0
-
         update_times = int(buffer_size * self.repeat_times / self.batch_size)
         assert update_times >= 1
         for _ in range(update_times):
@@ -214,28 +239,48 @@ class AgentPPO(AgentBase):
 
             """PPO: Surrogate objective of Trust Region"""
             new_logprob, obj_entropy = self.act.get_logprob_entropy(state, action)
-            ratio = (new_logprob - logprob.detach()).exp()
+            '''   /       |->Tensor size[]''' # [-0.53, 0]
+            '''Tensor size[batch_size]''' # (-oo, 0)
+            # debug_print("new_logprob", new_logprob[:10])
+            # debug_print("logprob", logprob[:10])
+            # debug_print("obj_entropy", obj_entropy)
+            # debug_print("obj_entropy", obj_entropy.size())
+            ratio = (new_logprob - logprob.detach()).exp() # 1 tensor size[batchz_size]
             surrogate1 = advantage * ratio
             surrogate2 = advantage * ratio.clamp(1 - self.ratio_clip, 1 + self.ratio_clip)
-            obj_surrogate = torch.min(surrogate1, surrogate2).mean()
+            obj_surrogate = torch.min(surrogate1, surrogate2).mean() # 求期望Expectation
 
-            obj_actor = obj_surrogate + obj_entropy.mean() * self.lambda_entropy
+            # obj_actor = obj_surrogate + obj_entropy * self.lambda_entropy
+            obj_actor = obj_surrogate #+ obj_entropy * self.lambda_entropy
             self.optimizer_update(self.act_optimizer, -obj_actor)
 
             obj_critics += obj_critic.item()
             obj_actors += obj_actor.item()
+
         a_std_log = getattr(self.act, 'a_std_log', torch.zeros(1)).mean()
 
-        debug_print("obj_actors:", obj_actors / update_times, level=LogLevel.ERROR, inline=True)
-        debug_print("advantages:", advantages, level=LogLevel.ERROR, inline=True)
-        debug_print("reward_sums:", reward_sums, level=LogLevel.ERROR, inline=True)
-        debug_print("actions:", actions, level=LogLevel.ERROR, inline=True)
+        # debug_print("obj_actors:", obj_actors / update_times, level=LogLevel.ERROR, inline=True)
+        # debug_print("advantages:", advantages, level=LogLevel.ERROR, inline=True)
+        # debug_print("reward_sums:", reward_sums, level=LogLevel.ERROR, inline=True)
+        # debug_print("actions:", actions, level=LogLevel.ERROR, inline=True)
 
         # debug_print("advantages size", advantages.size(), level=LogLevel.ERROR)
 
         # if (obj_actors / update_times) > 30: exit()
 
-        return obj_critics / update_times, obj_actors / update_times, a_std_log.item()
+        with torch.no_grad():
+            print('='*20)
+            debug_print("action[:5]", actions[:5])
+            debug_print("logprobs[:5]", logprobs[:5])
+            new_logprob, obj_entropy = self.act.get_logprob_entropy(states, actions)
+            debug_print("new_logprob", new_logprob[:5])
+            log_ratio_mean = (new_logprob - logprobs).exp().mean()
+            debug_print("ratio", log_ratio_mean)
+
+            debug_print("obj_actors mean", obj_actors / update_times)
+            print('\n', end='')
+
+        return obj_critics / update_times, obj_actors / update_times, log_ratio_mean #a_std_log.item()
 
     def update_net_old(self, buffer):
         """
@@ -374,8 +419,8 @@ class AgentPPO(AgentBase):
         masks = undones * self.gamma
         horizon_len = rewards.shape[0]
 
-        if self.states:
-            next_state = torch.tensor(np.array(self.states), dtype=torch.float32).to(self.device)
+        if self.last_states:
+            next_state = torch.tensor(np.array(self.last_states), dtype=torch.float32).to(self.device)
             next_value = self.cri(next_state).detach()[0, 0]
         else:
             next_value = torch.zeros(1)[0] #FIXME only for multi-process

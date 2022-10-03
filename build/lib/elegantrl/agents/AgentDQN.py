@@ -42,7 +42,7 @@ class AgentDQN(AgentBase):  # [ElegantRL.2022.04.18]
         """
         traj_list = []
         last_done = [0, ]
-        state = self.states[0]
+        state = self.last_states[0]
 
         i = 0
         done = False
@@ -57,7 +57,7 @@ class AgentDQN(AgentBase):  # [ElegantRL.2022.04.18]
             i += 1
             state = env.reset() if done else next_state
 
-        self.states[0] = state
+        self.last_states[0] = state
         last_done[0] = i
         return self.convert_trajectory(traj_list, last_done)
 
@@ -71,7 +71,7 @@ class AgentDQN(AgentBase):  # [ElegantRL.2022.04.18]
         """
         traj_list = []
         last_done = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
-        states = self.states
+        states = self.last_states
 
         i = 0
         dones = torch.zeros(self.env_num, dtype=torch.int, device=self.device)
@@ -85,7 +85,7 @@ class AgentDQN(AgentBase):  # [ElegantRL.2022.04.18]
             last_done[torch.where(dones)[0]] = i  # behind `i+=1`
             states = next_states
 
-        self.states = states
+        self.last_states = states
         return self.convert_trajectory(traj_list, last_done)  # traj_list
 
     def update_net(self, buffer: ReplayBuffer) -> tuple:

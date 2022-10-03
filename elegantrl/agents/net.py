@@ -1,3 +1,4 @@
+from tkinter.messagebox import RETRY
 from typing import Tuple
 import torch
 import torch.nn as nn
@@ -392,12 +393,13 @@ class ActorPPO(nn.Module):
         #     nn.Linear(128, action_dim)
         # )
         self.net = nn.Sequential(
-            nn.Linear(state_dim, 256),
+            nn.Linear(state_dim, 64),
             nn.Tanh(),
-            nn.Linear(256, action_dim)
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, action_dim)
         )
         # the logarithm (log) of standard deviation (std) of action, it is a trainable parameter
-        # self.action_std_log = nn.Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
         self.action_std_log = Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
         self.log_sqrt_2pi = np.log(np.sqrt(2 * np.pi))
 
@@ -405,13 +407,41 @@ class ActorPPO(nn.Module):
         return self.net(state).tanh()  # action.tanh()
 
     def get_action(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
+        action_avg = self.net(state) # (-∞, ∞)
+        action_std = self.action_std_log.exp() # (0, ∞)
+
+        dist = Normal(action_avg, action_std)
+        action = dist.sample() # (-∞, ∞)  --> Tensor sizep[batch_size, action_dim]
+        logprob = dist.log_prob(action).sum(1)
+        '''           .log_prob(action).sum(1)                       '''
+        '''                        |     |-> Tensor size[1]          '''
+        '''                        |--> Tensor size[1, action_dim]   '''
+        return action, logprob
+
+    def get_action_logprob(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
         action_avg = self.net(state)
         action_std = self.action_std_log.exp()
 
-        dist = Normal(action_avg, action_std)
-        action = dist.sample()
-        logprob = dist.log_prob(action).sum(1)
+        noise = torch.randn_like(action_avg)
+        action = action_avg + noise * action_std
+
+
+        delta = ((action - action_avg) / action_std).pow(2) * 0.5
+        logprob = -(self.action_std_log + self.log_sqrt_2pi + delta).sum(1)  # new_logprob
+
         return action, logprob
+
+
+    def get_action_noise(self, state: Tensor) -> Tuple[Tensor, Tensor]:
+        action_avg = self.net(state)
+        action_std = self.action_std_log.exp()
+
+        noise = torch.randn_like(action_avg)
+        action = action_avg + noise * action_std
+        
+        return action, noise # torch.Size([1, 4])   torch.Size([1, 4]) 
+
+
 
     def get_logprob(self, state: Tensor, action: Tensor) -> Tensor:
         action_avg = self.net(state)
@@ -428,7 +458,15 @@ class ActorPPO(nn.Module):
         delta = ((action_avg - action) / action_std).pow(2) * 0.5
         logprob = -(self.action_std_log + self.log_sqrt_2pi + delta).sum(1)  # new_logprob
 
-        dist_entropy = (logprob.exp() * logprob).mean()  # policy entropy
+        # debug_print("logprob", logprob)
+        # debug_print("logprob", logprob.size())
+
+        dist_entropy = (logprob.exp() * logprob).mean()  # policy entropy 衡量的是一个bacth里所有state传入模型后产生的action的均值，建立高斯分布后再采样得到的动作的概率 p * logp [-0.53, 0] (代表一个动作采样时是比较接近均值[此时p*logp=0]还是比较稀有[p=0, p*logp = 0], p=0.36取得极值，logp=1.47)再求平均，代表这一个batch里所采样出的动作的是否太均值或者过于稀有
+
+        # debug_print("(logprob.exp() * logprob)",(logprob.exp() * logprob))
+        # debug_print("dist_entropy", dist_entropy)
+        # debug_print("dist_entropy", dist_entropy.size())
+
         return logprob, dist_entropy
 
     def get_old_logprob(self, _action: Tensor, noise: Tensor) -> Tensor:  # noise = action - a_noise

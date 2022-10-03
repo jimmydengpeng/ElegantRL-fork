@@ -167,18 +167,18 @@ class AgentMADDPG(AgentBase):
             k += 1
             actions = []
             for i in range(self.n_agents):
-                action = self.agents[i].select_actions(self.states[i])
+                action = self.agents[i].select_actions(self.last_states[i])
                 actions.append(action)
             # print(actions)
             next_s, reward, done, _ = env.step(actions)
-            traj_temp.append((self.states, reward, done, actions))
+            traj_temp.append((self.last_states, reward, done, actions))
             global_done = all(done[i] is True for i in range(self.n_agents))
             if global_done or k > 100:
                 state = env.reset()
                 k = 0
             else:
                 state = next_s
-        self.states = state
+        self.last_states = state
         return traj_temp
 
     def select_actions(self, states):

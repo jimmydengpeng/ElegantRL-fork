@@ -458,7 +458,8 @@ def save_learning_curve(
     ax10.tick_params(axis='y', labelcolor=color10)
     for plot_i in range(6, recorder.shape[1]):
         other = recorder[:, plot_i]
-        ax10.plot(steps, other, label=f'{plot_i}', color='grey', alpha=0.5)
+        # ax10.plot(steps, other, label=f'{plot_i}', color='grey', alpha=0.5)
+        ax10.plot(steps, other/100, label='ratio(%)', color='grey', alpha=0.5)
     ax10.legend()
     ax10.grid()
 
