@@ -259,26 +259,6 @@ class AgentPPO(AgentBase):
 
         a_std_log = getattr(self.act, 'a_std_log', torch.zeros(1)).mean()
 
-        # debug_print("obj_actors:", obj_actors / update_times, level=LogLevel.ERROR, inline=True)
-        # debug_print("advantages:", advantages, level=LogLevel.ERROR, inline=True)
-        # debug_print("reward_sums:", reward_sums, level=LogLevel.ERROR, inline=True)
-        # debug_print("actions:", actions, level=LogLevel.ERROR, inline=True)
-
-        # debug_print("advantages size", advantages.size(), level=LogLevel.ERROR)
-
-        # if (obj_actors / update_times) > 30: exit()
-
-        with torch.no_grad():
-            print('='*20)
-            debug_print("action[:5]", actions[:5])
-            debug_print("logprobs[:5]", logprobs[:5])
-            new_logprob, obj_entropy = self.act.get_logprob_entropy(states, actions)
-            debug_print("new_logprob", new_logprob[:5])
-            log_ratio_mean = (new_logprob - logprobs).exp().mean()
-            debug_print("ratio", log_ratio_mean)
-
-            debug_print("obj_actors mean", obj_actors / update_times)
-            print('\n', end='')
 
         return obj_critics / update_times, obj_actors / update_times, log_ratio_mean #a_std_log.item()
 
