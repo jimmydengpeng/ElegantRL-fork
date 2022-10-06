@@ -29,6 +29,7 @@ runs/
 docs/
 elegantrl/envs/
 **/.DS_Store
+*.egg-info
 
 # tests file
 test.py
