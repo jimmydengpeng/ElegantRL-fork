@@ -405,7 +405,7 @@ class ActorPPO(nn.Module):
 
     '''for eval'''
     def forward(self, state: Tensor) -> Tensor:
-        return self.get_deterministic_action(state)
+        return self.convert_action_for_env(self.get_deterministic_action(state))
 
     def get_action(self, state: Tensor) -> Tensor:
         dist = self._get_dist(state)
