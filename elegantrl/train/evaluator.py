@@ -2,6 +2,7 @@ import os
 import time
 from typing import Any, List, Tuple
 import torch
+import torch.nn as nn
 import numpy as np
 from torch.utils.tensorboard.writer import SummaryWriter
 from elegantrl.train.config import Arguments
@@ -120,7 +121,7 @@ class Evaluator:
 
 """util"""
 
-def get_cumulative_returns_and_step(env, act) -> Tuple[float, int]:  
+def get_cumulative_returns_and_step(env, act: nn.Module) -> Tuple[float, int]:  
     """Usage
     eval_times = 4
     net_dim = 2 ** 7
@@ -143,7 +144,10 @@ def get_cumulative_returns_and_step(env, act) -> Tuple[float, int]:
     returns = 0.0  # sum of rewards in an episode
     for steps in range(max_step):
         tensor_state = torch.as_tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-        tensor_action = act(tensor_state).argmax(dim=1) if if_discrete else act(tensor_state)
+        if if_discrete:
+            tensor_action = act(tensor_state).argmax(dim=1) 
+        else:
+            tensor_action = act(tensor_state) # action_avg
         action = tensor_action.detach().cpu().numpy()[0]  # not need detach(), because using torch.no_grad() outside
         state, reward, done, _ = env.step(action)
         returns += reward
