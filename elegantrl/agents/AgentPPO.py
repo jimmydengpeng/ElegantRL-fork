@@ -33,7 +33,7 @@ class AgentPPO(AgentBase):
     """
 
     def __init__(
-            self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments
+            self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None
     ):
         self.if_off_policy = False
         self.act_class = getattr(self, "act_class", ActorPPO)
@@ -131,6 +131,7 @@ class AgentPPO(AgentBase):
     def explore_vec_env(self, env, target_step, random_exploration=None):
         pass
 
+
     def update_net(self, buffer: ReplayBufferList):
         """
         Update the neural networks by sampling batch data from `ReplayBuffer`.
@@ -194,10 +195,9 @@ class AgentPPO(AgentBase):
             obj_critics += obj_critic.item()
             obj_actors += obj_actor.item()
 
-        a_std_log = getattr(self.act, 'action_std_log', torch.zeros(1)).mean()
+        action_std = getattr(self.act, 'action_std_log', torch.zeros(1)).exp().mean()
 
-
-        return obj_critics / update_times, obj_actors / update_times, a_std_log.item()
+        return obj_critics / update_times, obj_actors / update_times, action_std.item()
 
 
     def get_reward_sum_raw(

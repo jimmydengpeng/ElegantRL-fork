@@ -152,7 +152,6 @@ def train_and_evaluate(args: Arguments):
         #     debug_print(f"t{i}[0] size", args=t[0].size(), inline=True)
         #     debug_print(f"t{i}[0]", args=(t[0]))
         steps = horizon_len
-        debug_print("steps:", steps, level=LogLevel.ERROR, inline=True)
         # steps, r_exp = buffer.update_buffer((trajectory,))
         if if_off_policy:
             buffer.update_buffer(trajectory)
@@ -342,7 +341,6 @@ class PipeLearner:
             traj_list = comm_exp.explore(agent) # list of tuple * worker_num: [(t, t, t, t, t),...]
             trajectory = [torch.cat(t_list) for t_list in list(zip(*traj_list))]
             steps = trajectory[0].size()[0]
-            debug_print("steps", steps, level=LogLevel.ERROR, inline=True)
             # steps, r_exp = buffer.update_buffer(traj_list)
             r_exp = trajectory[3].mean().item()
             torch.set_grad_enabled(True)
