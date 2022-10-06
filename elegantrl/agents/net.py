@@ -403,33 +403,28 @@ class ActorPPO(nn.Module):
         self.action_std_log = Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
         self.log_sqrt_2pi = np.log(np.sqrt(2 * np.pi))
 
-    '''not used'''
+    '''for eval'''
     def forward(self, state: Tensor) -> Tensor:
-        return self.net(state).tanh()  # action.tanh()
+        return self.convert_action_for_env(self.get_deterministic_action(state))
 
-    '''Deprecated'''
-    def get_action(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
-        action_avg = self.net(state) # (-∞, ∞)
-        action_std = self.action_std_log.exp() # (0, ∞)
-
-        dist = Normal(action_avg, action_std)
-        action = dist.sample() # (-∞, ∞)  --> Tensor sizep[batch_size, action_dim]
-        logprob = dist.log_prob(action).sum(1)
-        '''           .log_prob(action).sum(1)                       '''
-        '''                        |     |-> Tensor size[1]          '''
-        '''                        |--> Tensor size[1, action_dim]   '''
-        return action, logprob
+    def get_action(self, state: Tensor) -> Tensor:
+        dist = self._get_dist(state)
+        action = dist.sample() # (-∞, ∞)  --> Tensor size: [batch_size, action_dim]
+        return action
 
     '''for explore'''
     def get_action_logprob(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
         dist = self._get_dist(state)
         action = dist.sample()
-        logprob = dist.log_prob(action).sum(1) # size: [batch_size, 1]
+        logprob = dist.log_prob(action).sum(1) # size: [batch_size]
+        '''           .log_prob(action).sum(1)                       '''
+        '''                        |     |-> Tensor size[1]          '''
+        '''                        |--> Tensor size[1, action_dim]   '''
         return action, logprob
 
     def _get_dist(self, state: Tensor):
-        action_avg = self.net(state)
-        action_std = self.action_std_log.expand_as(action_avg).exp()  # To make 'log_std' have the same dimension as 'mean'
+        action_avg = self.net(state) # (-∞, ∞)
+        action_std = self.action_std_log.expand_as(action_avg).exp() # (0, ∞)
         return Normal(action_avg, action_std)  # Get the Gaussian distribution
 
     '''for update'''

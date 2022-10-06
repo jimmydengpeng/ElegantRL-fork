@@ -56,7 +56,7 @@ env = MetaDriveEnv(metadrive_env_config)
 env_args = {
     "env_num": 1,
     "env_name": "MetaDrive-Single-Agent",
-    "max_step": 1000,
+    "max_step": 1000, # for eval
     "state_dim": get_space_dim(env.observation_space),
     "action_dim": get_space_dim(env.action_space),
     "if_discrete": False,

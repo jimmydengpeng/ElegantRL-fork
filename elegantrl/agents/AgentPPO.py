@@ -87,29 +87,6 @@ class AgentPPO(AgentBase):
             state = torch.as_tensor(ary_state, dtype=torch.float32, device=self.device) # TenosrSize: [state_dim]
             action, logprob = [t.squeeze() for t in get_action(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
 
-            
-            # for _ in range(10000):
-            #     action, logprob = [t.squeeze() for t in get_action(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
-            #     actions1.append(action[0].item())
-            #     logps1.append(logprob.item())
-
-            # for _ in range(10000):
-            #     action2, noise = [t.squeeze() for t in self.act.get_action_noise(state.unsqueeze(0))] # 在指定位置插入维度1, 变成 Size([1, state_dim])
-            #     actions2.append(action2[0].item())
-            #     noise_ = noise.unsqueeze(0)
-            #     old_logprob = self.act.get_old_logprob(action2, noise_).squeeze(0)
-            #     logps2.append(old_logprob.item())
-            #     # debug_print("action1", self.act.get_logprob_entropy(state.unsqueeze(0), action))
-            #     # debug_print("action1", self.act.get_logprob_entropy(state.unsqueeze(0), action2))
-
-     
-            """ action size[action_dim]"""
-            """ logprob size[]"""
-
-            # assert isinstance(env.action_space, Box)
-            # ary_action = np.clip(action.cpu().numpy(), env.action_space.low, env.action_space.high)
-            # ary_action = action.detach().tanh().cpu().numpy()
-
             ary_action = convert(action).detach().cpu().numpy()
             ary_state, reward, done, _ = env.step(ary_action) # => only put action of <numpy.ndarray> to env
             if done:

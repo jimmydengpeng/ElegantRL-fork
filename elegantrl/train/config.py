@@ -282,5 +282,5 @@ def set_attr_for_env(env, env_args):
 
 
 '''for type checkinh'''
-# DEFAULT_ARGS = Arguments(agent_class=None) 
+# DEFAULT_ARGS = None 
 DEFAULT_ARGS: Arguments = None # type: ignore
