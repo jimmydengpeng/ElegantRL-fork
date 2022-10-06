@@ -78,7 +78,7 @@ debug_print("args.action_dim", args=args.action_dim, inline=True)
 args.target_step = args.max_step * 4 # horizon_len for exploration
 args.gamma = 0.98
 args.learning_rate = 3e-4
-args.ration_clip = 0.2
+args.ratio_clip = 0.2
 args.eval_times = 2 ** 5
 args.horizon_len = 8192 # args.batch_size * 4
 args.learner_gpus = ter_args.gpuid

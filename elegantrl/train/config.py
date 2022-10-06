@@ -3,6 +3,7 @@ from operator import imod
 import os
 import os.path as osp
 from typing import Any, Callable, Optional, Union, List
+from unittest.mock import DEFAULT
 import gym
 import torch
 import numpy as np
@@ -86,6 +87,9 @@ class Arguments:
 
         '''Arguments for Experiment Description as folder suffix'''
         self.desc = ""
+
+        '''Arguments Special for PPO'''
+        self.ratio_clip = 0.2
 
     # if args.env is None, build a env & assign it to args.env
     def init_before_training(self):
@@ -275,3 +279,7 @@ def set_attr_for_env(env, env_args):
             setattr(env, attr_str, env_args[attr_str])
     # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
     # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
+
+
+'''for type checkinh'''
+DEFAULT_ARGS = Arguments(agent_class=None)  # type: ignore

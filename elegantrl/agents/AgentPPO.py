@@ -10,7 +10,7 @@ from torch import Tensor
 from elegantrl.agents.AgentBase import AgentBase
 from elegantrl.agents.net import ActorPPO, ActorDiscretePPO, CriticPPO, SharePPO
 from elegantrl.train.config import \
-    Arguments  # bug fix:NameError: name 'Arguments' is not defined def __init__(self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None):
+    Arguments, DEFAULT_ARGS
 from elegantrl.train.replay_buffer import ReplayBufferList
 from utils import LogLevel, debug_msg, debug_print
 
@@ -33,7 +33,7 @@ class AgentPPO(AgentBase):
     """
 
     def __init__(
-            self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = None
+            self, net_dim: int, state_dim: int, action_dim: int, gpu_id: int = 0, args: Arguments = DEFAULT_ARGS
     ):
         self.if_off_policy = False
         self.act_class = getattr(self, "act_class", ActorPPO)
@@ -197,7 +197,7 @@ class AgentPPO(AgentBase):
 
         action_std = getattr(self.act, 'action_std_log', torch.zeros(1)).exp().mean()
 
-        return obj_critics / update_times, obj_actors / update_times, action_std.item()
+        return obj_critics/update_times, obj_actors/update_times, action_std.item()
 
 
     def get_reward_sum_raw(

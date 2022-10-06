@@ -155,19 +155,20 @@ def get_cumulative_returns_and_step(env, act) -> Tuple[float, int]:
 
 
 def save_learning_curve(
-        recorder: List[Any], cwd: str = '.',
+        recorder: List[Tuple[Any]], cwd: str = '.',
         save_title: str = 'learning curve', fig_name: str = 'plot_learning_curve.jpg'
 ):
     if recorder is None:
         recorder = np.load(f"{cwd}/recorder.npy")
 
-    recorder = np.array(recorder)  # type: ignore
-    steps = recorder[:, 0]  # x-axis is training steps
-    r_avg = recorder[:, 1]
-    r_std = recorder[:, 2]
-    r_exp = recorder[:, 3]
-    obj_c = recorder[:, 4]
-    obj_a = recorder[:, 5] 
+    recorder = np.array(recorder) # type: ignore
+    assert isinstance(recorder, np.ndarray)
+    steps = recorder[:, 0] # type: ignore # x-axis is training steps
+    r_avg = recorder[:, 1] # type: ignore
+    r_std = recorder[:, 2] # type: ignore
+    r_exp = recorder[:, 3] # type: ignore
+    obj_c = recorder[:, 4] # type: ignore
+    obj_a = recorder[:, 5] # type: ignore
 
     '''plot subplots'''
     import matplotlib as mpl
@@ -211,7 +212,7 @@ def save_learning_curve(
     ax10.plot(steps, obj_a, label='objA', color=color10)
     ax10.tick_params(axis='y', labelcolor=color10)
     for plot_i in range(6, recorder.shape[1]): # action std error 随机策略分布的标准差
-        other = recorder[:, plot_i]
+        other = recorder[:, plot_i] # type: ignore
         ax10.plot(steps, other, label='stdE', color='grey', alpha=0.5)
     ax10.legend()
     ax10.grid()
@@ -224,5 +225,4 @@ def save_learning_curve(
 
 
 if __name__ == '__main__':
-    # demo_evaluate_actors()
     pass

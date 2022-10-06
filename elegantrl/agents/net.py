@@ -555,7 +555,7 @@ class CriticREDQ(nn.Module):  # modified REDQ (Randomized Ensemble Double Q-lear
         self.critic_num = 8
         self.critic_list = []
         for critic_id in range(self.critic_num):
-            child_cri_net = Critic(mid_dim, state_dim, action_dim).net
+            child_cri_net = Critic(mid_dim, state_dim, action_dim).net # type: ignore
             setattr(self, f"critic{critic_id:02}", child_cri_net)
             self.critic_list.append(child_cri_net)
 
@@ -643,7 +643,7 @@ class SharePPO(nn.Module):  # Pixel-level state version
         self.dec_a = nn.Sequential(
             nn.Linear(out_dim, mid_dim), nn.ReLU(), nn.Linear(mid_dim, action_dim)
         )
-        self.a_std_log = nn.Parameter(
+        self.a_std_log = Parameter(
             torch.zeros(1, action_dim) - 0.5, requires_grad=True
         )
 
@@ -654,9 +654,9 @@ class SharePPO(nn.Module):  # Pixel-level state version
             nn.Linear(out_dim, mid_dim), nn.ReLU(), nn.Linear(mid_dim, 1)
         )
 
-        layer_norm(self.dec_a[-1], std=0.01)
-        layer_norm(self.dec_q1[-1], std=0.01)
-        layer_norm(self.dec_q2[-1], std=0.01)
+        layer_norm(self.dec_a[-1], std=0.01)  # type: ignore
+        layer_norm(self.dec_q1[-1], std=0.01)  # type: ignore
+        layer_norm(self.dec_q2[-1], std=0.01)  # type: ignore
 
         self.sqrt_2pi_log = np.log(np.sqrt(2 * np.pi))
 
@@ -741,14 +741,14 @@ class ShareSPG(nn.Module):  # SPG means stochastic policy gradient
             nn.ReLU(),
             nn.Linear(mid_dim // 2, 1),
         )  # q2 value
-        self.log_alpha = nn.Parameter(
+        self.log_alpha = Parameter(
             torch.zeros((1, action_dim)) - np.log(action_dim), requires_grad=True
         )
 
-        layer_norm(self.dec_a[-1], std=0.5)
-        layer_norm(self.dec_d[-1], std=0.1)
-        layer_norm(self.dec_q1[-1], std=0.5)
-        layer_norm(self.dec_q2[-1], std=0.5)
+        layer_norm(self.dec_a[-1], std=0.5)  # type: ignore
+        layer_norm(self.dec_d[-1], std=0.1)  # type: ignore
+        layer_norm(self.dec_q1[-1], std=0.5)  # type: ignore
+        layer_norm(self.dec_q2[-1], std=0.5)  # type: ignore
 
     def forward(self, s):
         x = self.enc_s(s)
@@ -835,7 +835,7 @@ def build_mlp(mid_dim, num_layer, input_dim, output_dim):  # MLP (MultiLayer Per
     return nn.Sequential(*net_list)
 
 
-def layer_norm(layer, std=1.0, bias_const=1e-6):
+def layer_norm(layer, std=1, bias_const=1e-6):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
 
