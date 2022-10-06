@@ -1,3 +1,4 @@
+from distutils.log import debug
 import os
 import time
 from typing import Tuple
@@ -5,6 +6,7 @@ import torch
 import numpy as np
 from torch.utils.tensorboard.writer import SummaryWriter
 from elegantrl.train.config import Arguments
+from utils import debug_msg, sec2hms
 # import wandb
 
 
@@ -35,6 +37,7 @@ class Evaluator:
         ID     Step    maxR |    avgR   stdR   avgS  stdS |    expR   objC   etc.
         '''
 
+    '''called after every update_net, passing in args of last update_net'''
     def evaluate_save_and_plot(self, act, steps: int, r_exp: float, log_tuple: tuple) -> Tuple[bool, bool]:
         self.total_step += steps  # update total training steps
 
@@ -101,7 +104,9 @@ class Evaluator:
             '''draw plot and save as figure'''
             train_time = int(time.time() - self.start_time)
             total_step = int(self.recorder[-1][0])
-            save_title = f"step_time_maxR_{int(total_step)}_{int(train_time)}_{self.r_max:.3f}"
+            # save_title = f"step_time_maxR_{int(total_step)}_{int(train_time)}_{self.r_max:.3f}"
+            save_title =f"step_time_(avgStep)_maxR_{int(total_step)}_{int(train_time)}_({sec2hms(train_time)}*{int(total_step/train_time)})_{self.r_max:.3f}"
+
 
             save_learning_curve(self.recorder, self.cwd, save_title)
 

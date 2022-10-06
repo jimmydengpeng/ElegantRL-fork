@@ -19,6 +19,7 @@ parser.add_argument('--gpuid', '-g', type=int, default=0)
 parser.add_argument('--worker', type=int, default=4)
 parser.add_argument('--thread', type=int, default=4)
 parser.add_argument('--desc', type=str, default="")
+parser.add_argument('--render', action='store_true')
 ter_args = parser.parse_args()
 
 
@@ -33,9 +34,8 @@ metadrive_env_config = dict(
         # max_step_per_agent=1000,
         random_agent_model=False,
         random_lane_width=False,
-        random_lane_num=True,
-        # lane_num=2,
-        map=4,  # seven block
+        random_lane_num=False,
+        map="SSSSS",
         start_seed=random.randint(0, 1000)
 )
 # env_config = dict(

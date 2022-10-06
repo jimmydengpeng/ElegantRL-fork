@@ -45,7 +45,7 @@ class AgentPPO(AgentBase):
             args, "ratio_clip", 0.2
         )  # could be 0.00 ~ 0.50 `ratio.clamp(1 - clip, 1 + clip)`
         self.lambda_entropy = getattr(
-            args, "lambda_entropy", 0.02
+            args, "lambda_entropy", 0.01
         )  # could be 0.00~0.10
         self.lambda_gae_adv = getattr(
             args, "lambda_entropy", 0.98
@@ -238,7 +238,7 @@ class AgentPPO(AgentBase):
             self.optimizer_update(self.cri_optimizer, obj_critic)
 
             """PPO: Surrogate objective of Trust Region"""
-            new_logprob, obj_entropy = self.act.get_logprob_entropy(state, action)
+            new_logprob, obj_entropy = self.act.get_logprob_entropy(state, action) #FIXME obj_entropy should be >=0
             '''   /       |->Tensor size[]''' # [-0.53, 0]
             '''Tensor size[batch_size]''' # (-oo, 0)
             # debug_print("new_logprob", new_logprob[:10])
@@ -251,7 +251,7 @@ class AgentPPO(AgentBase):
             obj_surrogate = torch.min(surrogate1, surrogate2).mean() # 求期望Expectation
 
             # obj_actor = obj_surrogate + obj_entropy * self.lambda_entropy
-            obj_actor = obj_surrogate #+ obj_entropy * self.lambda_entropy
+            obj_actor = obj_surrogate + obj_entropy * self.lambda_entropy
             self.optimizer_update(self.act_optimizer, -obj_actor)
 
             obj_critics += obj_critic.item()

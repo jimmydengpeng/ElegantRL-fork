@@ -7,7 +7,7 @@ from torch.distributions.normal import Normal
 import numpy as np
 import numpy.random as rd
 from torch.nn.parameter import Parameter
-from utils import debug_print
+from utils import LogLevel, debug_print
 
 
 """DQN"""
@@ -403,9 +403,11 @@ class ActorPPO(nn.Module):
         self.action_std_log = Parameter(torch.zeros((1, action_dim)) - 0.5, requires_grad=True)
         self.log_sqrt_2pi = np.log(np.sqrt(2 * np.pi))
 
+    '''not used'''
     def forward(self, state: Tensor) -> Tensor:
         return self.net(state).tanh()  # action.tanh()
 
+    '''Deprecated'''
     def get_action(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
         action_avg = self.net(state) # (-∞, ∞)
         action_std = self.action_std_log.exp() # (0, ∞)
@@ -418,67 +420,36 @@ class ActorPPO(nn.Module):
         '''                        |--> Tensor size[1, action_dim]   '''
         return action, logprob
 
+    '''for explore'''
     def get_action_logprob(self, state: Tensor) -> Tuple[Tensor, Tensor]: # for exploration
-        action_avg = self.net(state)
-        action_std = self.action_std_log.exp()
-
-        noise = torch.randn_like(action_avg)
-        action = action_avg + noise * action_std
-
-
-        delta = ((action - action_avg) / action_std).pow(2) * 0.5
-        logprob = -(self.action_std_log + self.log_sqrt_2pi + delta).sum(1)  # new_logprob
-
+        dist = self._get_dist(state)
+        action = dist.sample()
+        logprob = dist.log_prob(action).sum(1) # size: [batch_size, 1]
         return action, logprob
 
-
-    def get_action_noise(self, state: Tensor) -> Tuple[Tensor, Tensor]:
+    def _get_dist(self, state: Tensor):
         action_avg = self.net(state)
-        action_std = self.action_std_log.exp()
+        action_std = self.action_std_log.expand_as(action_avg).exp()  # To make 'log_std' have the same dimension as 'mean'
+        return Normal(action_avg, action_std)  # Get the Gaussian distribution
 
-        noise = torch.randn_like(action_avg)
-        action = action_avg + noise * action_std
-        
-        return action, noise # torch.Size([1, 4])   torch.Size([1, 4]) 
-
-
-
-    def get_logprob(self, state: Tensor, action: Tensor) -> Tensor:
-        action_avg = self.net(state)
-        action_std = self.action_std_log.exp()
-
-        delta = ((action_avg - action) / action_std).pow(2).__mul__(0.5)
-        logprob = -(self.action_std_log + self.log_sqrt_2pi + delta)  # new_logprob
-        return logprob
-
+    '''for update'''
     def get_logprob_entropy(self, state: Tensor, action: Tensor) -> Tuple[Tensor, Tensor]:
-        action_avg = self.net(state)
-        action_std = self.action_std_log.exp()
-
-        delta = ((action_avg - action) / action_std).pow(2) * 0.5
-        logprob = -(self.action_std_log + self.log_sqrt_2pi + delta).sum(1)  # new_logprob
-
-        # debug_print("logprob", logprob)
-        # debug_print("logprob", logprob.size())
-
-        dist_entropy = (logprob.exp() * logprob).mean()  # policy entropy 衡量的是一个bacth里所有state传入模型后产生的action的均值，建立高斯分布后再采样得到的动作的概率 p * logp [-0.53, 0] (代表一个动作采样时是比较接近均值[此时p*logp=0]还是比较稀有[p=0, p*logp = 0], p=0.36取得极值，logp=1.47)再求平均，代表这一个batch里所采样出的动作的是否太均值或者过于稀有
-
-        # debug_print("(logprob.exp() * logprob)",(logprob.exp() * logprob))
-        # debug_print("dist_entropy", dist_entropy)
-        # debug_print("dist_entropy", dist_entropy.size())
-
+        dist = self._get_dist(state)
+        logprob = dist.log_prob(action).sum(1) # size: [batch_size]
+        dist_entropy = dist.entropy().sum(1).mean()  # size: [] (只有一个数值)
+        # policy entropy，策略的熵衡量的一个策略的不确定性，熵越大，选择动作越“平均”，提高熵可以提高探索能力
         return logprob, dist_entropy
-
-    def get_old_logprob(self, _action: Tensor, noise: Tensor) -> Tensor:  # noise = action - a_noise
-        delta = noise.pow(2).__mul__(0.5)
-        return -(self.action_std_log + self.log_sqrt_2pi + delta).sum(1)  # old_logprob
+    
+    '''for evaluation'''
+    def get_deterministic_action(self, state) -> Tensor:
+        return self.net(state)
 
     @staticmethod
     def convert_action_for_env(action: Tensor) -> Tensor:
         return action.tanh()
 
     @staticmethod
-    def get_a_to_e(action):  # convert action of network to action of environment
+    def get_a_to_e(action: Tensor) -> Tensor:  # convert action of network for environment
         return action.tanh()
 
 

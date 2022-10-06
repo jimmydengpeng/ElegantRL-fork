@@ -142,6 +142,36 @@ def pretty_time(time_in_sec) -> str:
         s = remainder % 60
         return get_h(h) + get_m(m) + get_s(s)
     
+def sec2hms(time_in_sec):
+    unit_s = colorize("s", color=Color.GREEN, bold=False)
+    unit_m = colorize("m", color=Color.YELLOW, bold=False)
+    unit_h = colorize("h", color=Color.RED, bold=False)
+
+    def get_s(t) -> str:
+        return str(t) + "s"
+
+    def get_m(t) -> str:
+        return str(t) + "m" 
+
+    def get_h(t) -> str:
+        return str(t) + "h"
+
+    time_in_sec = int(time_in_sec)
+    if time_in_sec <= 100:
+        return get_s(time_in_sec)
+
+    elif time_in_sec > 60 and time_in_sec <= (60 * 60):
+        m = time_in_sec // 60
+        s = time_in_sec % 60
+        return get_m(m) + get_s(s)
+
+    elif time_in_sec > (60 * 60): 
+        h = time_in_sec // (60 * 60)
+        remainder = time_in_sec % (60 * 60)
+        m = remainder // 60 
+        s = remainder % 60
+        return get_h(h) + get_m(m) + get_s(s)
+    
 
 def get_space_dim(space):
     import gym.spaces
@@ -192,8 +222,6 @@ def test_debug_log_functions():
 if __name__ == "__main__":
     # test_debug_log_functions()
     # test_get_space_dim()
-    print(pretty_time(10))
-    print(pretty_time(100))
-    print(pretty_time(600))
-    print(pretty_time(3923))
-    print(pretty_time(7600))
+    print(formatted_sec(60))
+    print(formatted_sec(342))
+    print(formatted_sec(12345))
