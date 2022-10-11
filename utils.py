@@ -1,3 +1,4 @@
+from distutils.spawn import spawn
 from enum import Enum
 from time import time
 from typing import Any, Optional
@@ -172,6 +173,23 @@ def sec2hms(time_in_sec):
         s = remainder % 60
         return get_h(h) + get_m(m) + get_s(s)
     
+def time_str(s):
+    """
+    Convert seconds to a nicer string showing days, hours, minutes and seconds
+    """
+    days, remainder = divmod(s, 60 * 60 * 24)
+    hours, remainder = divmod(remainder, 60 * 60)
+    minutes, seconds = divmod(remainder, 60)
+    string = ""
+    if days > 0:
+        string += f"{int(days):d} days, "
+    if hours > 0:
+        string += f"{int(hours):d} hours, "
+    if minutes > 0:
+        string += f"{int(minutes):d} minutes, "
+    string += f"{int(seconds):d} seconds"
+    return string
+
 
 def get_space_dim(space):
     import gym.spaces
@@ -179,6 +197,14 @@ def get_space_dim(space):
         return space.shape[0]  # type: ignore
     elif isinstance(space, gym.spaces.Discrete):
         return space.n  # type: ignore
+    elif isinstance(space, gym.spaces.Dict): # multi-agent
+        spaces = [get_space_dim(space[key]) for key in space]
+        dim = spaces[0]
+        spaces = [s - dim for s in spaces]
+        assert not any(spaces)
+        return dim
+
+        
 
 
 def test_get_space_dim():
