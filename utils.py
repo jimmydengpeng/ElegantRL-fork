@@ -143,6 +143,9 @@ def pretty_time(time_in_sec) -> str:
         s = remainder % 60
         return get_h(h) + get_m(m) + get_s(s)
     
+    else:
+        raise NotImplementedError
+    
 def sec2hms(time_in_sec):
     unit_s = colorize("s", color=Color.GREEN, bold=False)
     unit_m = colorize("m", color=Color.YELLOW, bold=False)
@@ -191,20 +194,22 @@ def time_str(s):
     return string
 
 
-def get_space_dim(space):
+''' gym space '''
+
+def get_space_dim(space) -> int:
     import gym.spaces
     if isinstance(space, gym.spaces.Box):
         return space.shape[0]  # type: ignore
     elif isinstance(space, gym.spaces.Discrete):
         return space.n  # type: ignore
     elif isinstance(space, gym.spaces.Dict): # multi-agent
-        spaces = [get_space_dim(space[key]) for key in space]
+        spaces = [get_space_dim(space[key]) for key in space] # type: ignore
         dim = spaces[0]
         spaces = [s - dim for s in spaces]
         assert not any(spaces)
         return dim
-
-        
+    else:
+        raise NotImplementedError
 
 
 def test_get_space_dim():

@@ -23,13 +23,13 @@ class Arguments:
         self.env_func = env_func  # env = env_func(*env_args)
         self.env_args = env_args  # env = env_func(*env_args)
 
-        self.env_num = self.get_env_attr_from_env_or_env_args('env_num')  # env_num = 1. In vector env, env_num > 1.
-        self.env_name = self.get_env_attr_from_env_or_env_args('env_name')  # the env name. Be used to set 'cwd'.
+        self.env_num = self.get_env_attr_from_env_or_env_args('env_num')  # env_num = 1. In vector env, env_num > 1. #FIXME not used
+        self.env_name: str = self.get_env_attr_from_env_or_env_args('env_name')  # the env name. Be used to set 'cwd'.
         self.max_step: int = self.get_env_attr_from_env_or_env_args('max_step')  # the max step of an episode
-        self.state_dim = self.get_env_attr_from_env_or_env_args('state_dim')  # vector dimension (feature number) of state
-        self.action_dim = self.get_env_attr_from_env_or_env_args('action_dim')  # vector dimension (feature number) of action
-        self.if_discrete = self.get_env_attr_from_env_or_env_args('if_discrete')  # discrete or continuous action space
-        self.target_return = self.get_env_attr_from_env_or_env_args('target_return')  # target average episode return
+        self.state_dim: int = self.get_env_attr_from_env_or_env_args('state_dim')  # vector dimension (feature number) of state
+        self.action_dim: int = self.get_env_attr_from_env_or_env_args('action_dim')  # vector dimension (feature number) of action
+        self.if_discrete: bool = self.get_env_attr_from_env_or_env_args('if_discrete')  # discrete or continuous action space
+        self.target_return: int = self.get_env_attr_from_env_or_env_args('target_return')  # target average episode return
 
         self.agent_class = agent_class  # the class of DRL algorithm
         self.net_dim = 2 ** 8  # (256) the network width #FIXME not use
@@ -88,6 +88,10 @@ class Arguments:
         '''Arguments Special for PPO'''
         self.ratio_clip = 0.2
 
+        '''Argumnets for Multi-Agent'''
+        self.num_agents = self.get_env_attr_from_env_or_env_args('num_agents')
+        self.is_multi_agent = (self.num_agents > 1)
+
     # if args.env is None, build a env & assign it to args.env
     def init_before_training(self):
         # debug_msg("<Arguments.init_before_training> setting cwd...")
@@ -96,17 +100,17 @@ class Arguments:
         torch.set_num_threads(self.thread_num)
         torch.set_default_dtype(torch.float32)
 
-        '''auto set cwd, using ABSLUTE PATH'''
+        '''auto set cwd, using ABSOLUTE Path'''
         # (project_root)/elegantrl/train/config.py
         prj_root = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))) # 3rd parent directory
         exp_path = osp.join(prj_root, "experiments")
         if not osp.exists(exp_path):
             os.mkdir(exp_path)
-        suffix_desc = "" if self.desc == "" else "_"+self.desc
+        suffix_desc = "" if self.desc == "" else "_"+self.desc # 文件夹描述性后缀
         self.cwd =osp.join(
             exp_path,
             f'{self.env_name}_{self.agent_class.__name__[5:]}_{self.learner_gpus}_{get_formatted_time()}'+suffix_desc
-        )
+        ) # Agent类命的命名方式都是以 Agent 开头（5个字符）
         debug_print(f"<{__name__}.py/Arguments> cwd set in:", args=self.cwd, level=LogLevel.SUCCESS)
 
         '''remove history'''
@@ -117,10 +121,11 @@ class Arguments:
             shutil.rmtree(self.cwd, ignore_errors=True)
             debug_print(f"<{__name__}.py/Arguments> Remove cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         else:
-            debug_print(f"<{__name__}.py/Arguments> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
+            pass
+            # debug_print(f"<{__name__}.py/Arguments> Keep cwd:", args=f"{self.cwd}", level=LogLevel.WARNING)
         os.makedirs(self.cwd, exist_ok=True)
 
-        '''build env if needed'''
+        '''build env if not provided'''
         if self.env == None:
             debug_msg(f"<{__name__}.py/{self.__class__.__name__}.init_before_training> args.env is None, calling build_env()...")
             self.env = build_env(self.env, self.env_func, self.env_args)
@@ -129,7 +134,7 @@ class Arguments:
         try:
             attribute_value = getattr(self.env, attr) if self.env_args is None else self.env_args[attr]
         except Exception as error:
-            print(f"| Arguments.update_attr() Error: {error}")
+            debug_print(f"<{__name__}.py/{self.__class__.__name__}.get_env_attr_from_env_or_env_args>:", error, level=LogLevel.ERROR)
             attribute_value = None
         return attribute_value
 
@@ -147,10 +152,7 @@ class Arguments:
         pprint(vars(self))
 
 
-'''config for env(simulator)'''
-
-
-def get_gym_env_args(env, if_print) -> dict:  # [ElegantRL.2021.12.12]
+def get_gym_env_args(env, if_print) -> dict:
     """get a dict `env_args` about a standard OpenAI gym env information.
 
     env_args = {
@@ -233,16 +235,6 @@ def get_gym_env_args(env, if_print) -> dict:  # [ElegantRL.2021.12.12]
     return env_args
 
 
-def kwargs_filter(func, kwargs: dict):  # [ElegantRL.2021.12.12]
-    import inspect
-
-    sign = inspect.signature(func).parameters.values()
-    sign = set([val.name for val in sign])
-
-    common_args = sign.intersection(kwargs.keys())
-    filtered_kwargs = {key: kwargs[key] for key in common_args}
-    return filtered_kwargs
-
 
 def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[dict] = None):
     debug_msg(f"<{__name__}.py/builing_env> building env...")
@@ -261,6 +253,17 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
             env = env_func(id=env_args['env_name'])
         else:
             debug_msg("using kwargs_filter...")
+
+            def kwargs_filter(func, kwargs: dict):
+                import inspect
+
+                sign = inspect.signature(func).parameters.values()
+                sign = set([val.name for val in sign])
+
+                common_args = sign.intersection(kwargs.keys())
+                filtered_kwargs = {key: kwargs[key] for key in common_args}
+                return filtered_kwargs
+
             env = env_func(**kwargs_filter(env_func.__init__, env_args.copy()))
 
     set_attr_for_env(env, env_args)
@@ -268,13 +271,10 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
     return env
 
 def set_attr_for_env(env, env_args):
-    # debug_msg(f"<{__name__}.py/set_attr_for_env> setattr for env...")
     assert env_args is not None
     for attr_str in ('state_dim', 'action_dim', 'max_step', 'if_discrete', 'target_return'):
         if (not hasattr(env, attr_str)) and (attr_str in env_args):
             setattr(env, attr_str, env_args[attr_str])
-    # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
-    # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
 
 
 '''for type checking'''

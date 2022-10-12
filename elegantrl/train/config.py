@@ -272,13 +272,10 @@ def build_env(env=None, env_func: Optional[Callable] = None, env_args: Optional[
     return env
 
 def set_attr_for_env(env, env_args):
-    # debug_msg(f"<{__name__}.py/set_attr_for_env> setattr for env...")
     assert env_args is not None
     for attr_str in ('state_dim', 'action_dim', 'max_step', 'if_discrete', 'target_return'):
         if (not hasattr(env, attr_str)) and (attr_str in env_args):
             setattr(env, attr_str, env_args[attr_str])
-    # env.max_step = env.max_step if hasattr(env, 'max_step') else env_args['max_step']
-    # env.if_discrete = env.if_discrete if hasattr(env, 'if_discrete') else env_args['if_discrete']
 
 
 '''for type checkinh'''

@@ -254,6 +254,7 @@ class PipeWorker:
 
         '''init'''
         env = build_env(args.env, args.env_func, args.env_args)
+        
         agent = init_agent(args, gpu_id, env)
 
         '''loop'''

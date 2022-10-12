@@ -13,6 +13,15 @@ from metadrive import (
 )
 from metadrive.manager.traffic_manager import TrafficMode
 
+envs = dict(
+    Roundabout=MultiAgentRoundaboutEnv,
+    Intersection=MultiAgentIntersectionEnv,
+    Tollgate=MultiAgentTollgateEnv, # can't run
+    Bottleneck=MultiAgentBottleneckEnv,
+    Parkinglot=MultiAgentParkingLotEnv, # can't run
+    PGMA=MultiAgentMetaDrive
+)
+''' add args parser '''
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpuid', '-g', type=int, default=0)
 parser.add_argument('--worker', type=int, default=4)
@@ -21,42 +30,40 @@ parser.add_argument('--desc', type=str, default="")
 parser.add_argument('--render', action='store_true')
 ter_args = parser.parse_args()
 
-
+''' platform '''
 can_render = not sys.platform == 'darwin'
 render_in_linux = False
-pygame_render = False
+RENDER_IN_PYGAME = True
 
-metadrive_env_config = dict(
-        # use_render=all([can_render, render_in_linux]),
-        use_render=False,
-        start_seed=random.randint(0, 1000),
-        num_agents=15
+''' set args '''
+METADRIVE_ENV_CONFIG = dict(
+    use_render=False,
+    start_seed=random.randint(0, 1000),
+    environment_num=100,
+    num_agents=15,
+    manual_control=False,
+    crash_done=False,
+    horizon=1000, # default in env
 )
+ENV_NAME = "Roundabout"
+env_func = envs[ENV_NAME]
+env = env_func(METADRIVE_ENV_CONFIG)
 
-env = MultiAgentRoundaboutEnv(metadrive_env_config)
+ENV_CONFIG = dict(
+    env_name=ENV_NAME,
+    if_discrete=False,
+    max_step=1000, # for eval, FIXME
+    target_return=400, 
+    #FIXME add succ rate
+)
+ENV_CONFIG = dict(ENV_CONFIG, **METADRIVE_ENV_CONFIG)
+ENV_CONFIG["state_dim"] = get_space_dim(env.observation_space)
+ENV_CONFIG["action_dim"] = get_space_dim(env.action_space)
 
-# 7 major env args, will be set to arg's attributes
-env_args = {
-    "env_num": 1,
-    "env_name": "MetaDrive-Multi-Agent-Roundabout",
-    "max_step": 1000, # for eval # FIXME
-    "state_dim": get_space_dim(env.observation_space),
-    "action_dim": get_space_dim(env.action_space),
-    "if_discrete": False,
-    "target_return": 400,
-    # "id": "BipedalWalker-v3",
-}
-# set_attr_for_env(env, env_args)
-# debug_print("env.env_num:", env.env_num, inline=True)
-# debug_print("env.env_name:", env.env_name, inline=True)
-# get_gym_env_args(env, if_print=True)
-env_func = gym.make
+args = Arguments(AgentPPO, env=env, env_func=env_func, env_args=ENV_CONFIG)
 
-
-args = Arguments(AgentPPO, env=env, env_func=env_func, env_args=env_args)
-
-debug_print("args.state_dim", args=args.state_dim, inline=True)
-debug_print("args.action_dim", args=args.action_dim, inline=True)
+# debug_print("args.action_dim", args=args.action_dim, inline=True)
+# debug_print("args.state_dim", args=args.state_dim, inline=True)
 
 args.target_step = args.max_step * 4 # horizon_len for exploration
 args.gamma = 0.98
@@ -69,9 +76,11 @@ args.desc = ter_args.desc
 args.if_use_gae = True
 # args.repeat_times = 1
 
+render_args = dict(mode="top_down", film_size=(1000, 1000)) if RENDER_IN_PYGAME else {} #for render in eval
+
 # set processes & threads
 if sys.platform == "darwin": # only for my mac M1 Pro chip
-    debug_msg("On Mac")
+    debug_msg("On Mac ‍💻")
     args.learner_gpus = 0
     args.worker_num = 1
     args.thread_num = 1
@@ -82,7 +91,7 @@ else:
 
 # args.print()
 debug_print("Agent name:", level=LogLevel.INFO, args=args.agent_class.__name__, inline=True)
-debug_print("Env   name:", args=args.env_name, level=LogLevel.INFO, inline=True)
+debug_print("Env name:", args=args.env_name, level=LogLevel.INFO, inline=True)
 
 ''' EXPERIMENT CONSTANTS '''
 CONTINUOUS_TRAINING = False
